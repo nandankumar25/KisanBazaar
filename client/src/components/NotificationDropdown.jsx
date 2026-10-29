@@ -29,6 +29,7 @@ const NotificationDropdown = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
 
   const dropdownRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -90,6 +91,7 @@ const NotificationDropdown = () => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsOpen(false);
+        setExpandedId(null);
       }
     };
     if (isOpen) {
@@ -101,26 +103,27 @@ const NotificationDropdown = () => {
   const handleToggle = () => {
     if (!isOpen) {
       fetchNotificationsList();
+    } else {
+      setExpandedId(null);
     }
     setIsOpen((prev) => !prev);
   };
 
   const handleNotificationClick = async (notif) => {
-    try {
-      if (!notif.isRead) {
+    // 1. Toggle expansion: if already expanded, collapse it; otherwise expand it
+    setExpandedId((prev) => (prev === notif._id ? null : notif._id));
+
+    // 2. Mark as read if not already read
+    if (!notif.isRead) {
+      try {
         await markNotificationAsRead(notif._id);
         setNotifications((prev) =>
           prev.map((n) => (n._id === notif._id ? { ...n, isRead: true } : n))
         );
         setUnreadCount((c) => Math.max(0, c - 1));
+      } catch (err) {
+        console.error('Failed to mark notification as read:', err);
       }
-    } catch (err) {
-      console.error(err);
-    }
-
-    setIsOpen(false);
-    if (notif.link) {
-      navigate(notif.link);
     }
   };
 
@@ -214,7 +217,7 @@ const NotificationDropdown = () => {
           </div>
 
           {/* List */}
-          <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-50">
+          <div className="max-h-[380px] sm:max-h-[420px] overflow-y-auto divide-y divide-slate-50">
             {loading ? (
               <div className="p-6 text-center text-xs text-slate-400">Loading notifications...</div>
             ) : notifications.length === 0 ? (
@@ -226,35 +229,77 @@ const NotificationDropdown = () => {
                 </p>
               </div>
             ) : (
-              notifications.map((notif) => (
-                <div
-                  key={notif._id}
-                  onClick={() => handleNotificationClick(notif)}
-                  className={`px-4 py-3 cursor-pointer hover:bg-slate-50 transition flex items-start space-x-3 text-left ${
-                    !notif.isRead ? 'bg-emerald-50/40' : ''
-                  }`}
-                >
-                  <div className="p-2 bg-slate-100 rounded-xl shrink-0 mt-0.5">
-                    {getNotifIcon(notif.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between mb-0.5">
-                      <p className={`text-xs truncate ${!notif.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>
-                        {notif.title}
-                      </p>
-                      <span className="text-[10px] text-slate-400 shrink-0 ml-1">
-                        {timeAgo(notif.createdAt)}
-                      </span>
+              notifications.map((notif) => {
+                const isExpanded = expandedId === notif._id;
+
+                return (
+                  <div
+                    key={notif._id}
+                    onClick={() => handleNotificationClick(notif)}
+                    className={`px-4 py-3 cursor-pointer hover:bg-slate-50 transition flex items-start space-x-3 text-left ${
+                      !notif.isRead ? 'bg-emerald-50/40' : ''
+                    } ${isExpanded ? 'bg-slate-50/80 shadow-inner' : ''}`}
+                  >
+                    <div className="p-2 bg-slate-100 rounded-xl shrink-0 mt-0.5">
+                      {getNotifIcon(notif.type)}
                     </div>
-                    <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
-                      {notif.message}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between mb-0.5">
+                        <p
+                          className={`text-xs ${
+                            isExpanded ? 'whitespace-normal break-words' : 'truncate'
+                          } ${!notif.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}
+                        >
+                          {notif.title}
+                        </p>
+                        <span className="text-[10px] text-slate-400 shrink-0 ml-1.5">
+                          {timeAgo(notif.createdAt)}
+                        </span>
+                      </div>
+
+                      {isExpanded ? (
+                        <p className="text-[11px] text-slate-700 whitespace-normal break-words leading-relaxed mt-1">
+                          {notif.message}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
+                          {notif.message}
+                        </p>
+                      )}
+
+                      {isExpanded && notif.link && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsOpen(false);
+                              setExpandedId(null);
+                              navigate(notif.link);
+                            }}
+                            className="inline-flex items-center text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition"
+                          >
+                            <span>View details</span>
+                            <ExternalLink className="w-3 h-3 ml-1" />
+                          </button>
+                          <span className="text-[10px] text-slate-400">Click to collapse</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col items-center shrink-0 space-y-1 mt-1">
+                      {!notif.isRead && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                      )}
+                      <ChevronRight
+                        className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                          isExpanded ? 'rotate-90 text-emerald-600' : ''
+                        }`}
+                      />
+                    </div>
                   </div>
-                  {!notif.isRead && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0 mt-2" />
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
