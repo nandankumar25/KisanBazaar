@@ -194,17 +194,35 @@ async function runTransportCancellationTests() {
     assert(rejectedBooking.refundTransactionId.startsWith('REF-'), 'Valid refundTransactionId generated');
     assert(rejectedBooking.paymentStatus === 'REFUNDED', 'Payment status updated to REFUNDED');
 
-    // Check Farmer received rejection notification with exact refund amount
+    // Check Farmer immediately received rejection notification
     const farmerNotifsRes = await fetch(`${baseUrl}/notifications`, {
       method: 'GET',
       headers: farmerHeaders,
     });
     const farmerNotifsData = await farmerNotifsRes.json();
     const rejectNotif = farmerNotifsData.data?.find((n) => n.relatedTransport?.toString() === booking1._id.toString() && n.title.includes('Rejected'));
-    assert(rejectNotif && rejectNotif.message.includes('Wheat4') && rejectNotif.message.includes('840'), 'Farmer received rejection notification with crop and refund amount');
+    assert(rejectNotif && rejectNotif.message.includes('Wheat4') && rejectNotif.message.includes('840'), 'Farmer received immediate rejection notification with crop and refund reference');
 
-    const refundNotif = farmerNotifsData.data?.find((n) => n.type === 'TRANSPORT_REFUND');
-    assert(refundNotif && refundNotif.message.includes('840'), 'Farmer received separate refund completion notification');
+    // Verify refund notification is NOT sent immediately (waiting for 20s delay)
+    const immediateRefundNotif = farmerNotifsData.data?.find((n) => n.type === 'TRANSPORT_REFUND');
+    assert(!immediateRefundNotif, 'Delayed refund notification not yet sent immediately at 0s');
+
+    console.log('Waiting 20.5s for delayed refund notification trigger...');
+    await new Promise((resolve) => setTimeout(resolve, 20500));
+
+    // Check Farmer received delayed refund notification after 20 seconds
+    const farmerDelayedNotifsRes = await fetch(`${baseUrl}/notifications`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const farmerDelayedNotifsData = await farmerDelayedNotifsRes.json();
+    const delayedRefundNotif = farmerDelayedNotifsData.data?.find((n) => n.type === 'TRANSPORT_REFUND');
+    assert(delayedRefundNotif && delayedRefundNotif.title === 'Transport Refund Initiated', 'Farmer received delayed notification with title "Transport Refund Initiated"');
+    assert(
+      delayedRefundNotif &&
+        delayedRefundNotif.message === 'Your transport booking for Wheat4 (50 qtl) has been rejected. Your online payment refund of ₹840 has been initiated.',
+      'Delayed refund notification text dynamically matches crop, quantity, and exact refund amount'
+    );
 
     // Test Idempotency: Rejecting again should not double refund
     const secondRejectRes = await fetch(`${baseUrl}/transports/${booking1._id}/status`, {

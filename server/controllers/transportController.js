@@ -223,17 +223,38 @@ const updateTransportStatus = async (req, res, next) => {
             relatedTransport: transport._id,
           });
 
-          // Separate refund notification if refund occurred
-          if (transport.refundStatus === 'REFUNDED') {
-            await Notification.create({
-              recipient: farmerUserId,
-              sender: req.user?._id,
-              type: 'TRANSPORT_REFUND',
-              title: `Refund Processed - ${transport.refundTransactionId}`,
-              message: `A refund of ₹${transport.refundAmount} has been processed to your original payment method (${transport.paymentMethod}) for transport booking #${bookingId.slice(-6).toUpperCase()}.`,
-              link: '/dashboard',
-              relatedTransport: transport._id,
-            });
+          // Delayed Refund Notification: sent after exactly 20 seconds for online paid bookings
+          if (isOnlinePaid && transport.refundStatus === 'REFUNDED') {
+            const refundBookingId = transport._id;
+            const senderUserId = req.user?._id;
+            const refundCrop = cropName;
+            const refundQty = quantity;
+            const refundAmt = transport.refundAmount;
+
+            setTimeout(async () => {
+              try {
+                // Prevent duplicate refund notifications
+                const existingRefundNotif = await Notification.findOne({
+                  recipient: farmerUserId,
+                  type: 'TRANSPORT_REFUND',
+                  relatedTransport: refundBookingId,
+                });
+
+                if (!existingRefundNotif) {
+                  await Notification.create({
+                    recipient: farmerUserId,
+                    sender: senderUserId,
+                    type: 'TRANSPORT_REFUND',
+                    title: 'Transport Refund Initiated',
+                    message: `Your transport booking for ${refundCrop} (${refundQty} qtl) has been rejected. Your online payment refund of ₹${refundAmt} has been initiated.`,
+                    link: '/dashboard',
+                    relatedTransport: refundBookingId,
+                  });
+                }
+              } catch (delayErr) {
+                console.error('Failed to send delayed refund notification:', delayErr.message);
+              }
+            }, 20000);
           }
         }
       } catch (notifErr) {
