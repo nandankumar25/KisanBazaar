@@ -217,11 +217,12 @@ const TransportBooking = () => {
         notes: farmerNotes.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         // Payment Details (Stored in Transport record)
-        paymentStatus: 'PENDING',
+        paymentStatus: isCod ? 'PENDING' : 'PAID',
         paymentMethod: paymentMethod,
         transactionReference: transactionReference,
-        paidAmount: 0,
-        paymentGatewayStatus: isCod ? 'COD_PENDING' : 'PENDING_INTEGRATION',
+        paidAmount: isCod ? 0 : totalCost,
+        paymentDate: isCod ? undefined : new Date(),
+        paymentGatewayStatus: isCod ? 'COD_PENDING' : 'SUCCESS',
       };
 
       if (cropLotId) {
@@ -237,7 +238,8 @@ const TransportBooking = () => {
           ...(res.data || res),
           paymentMethod,
           transactionReference,
-          paymentStatus: 'PENDING',
+          paymentStatus: isCod ? 'PENDING' : 'PAID',
+          paidAmount: isCod ? 0 : totalCost,
         });
       } else {
         setError('Failed to record transport booking. Please check details and try again.');
@@ -354,10 +356,14 @@ const TransportBooking = () => {
             </div>
             <div className="flex justify-between border-b border-emerald-100 pb-2 items-center">
               <span className="text-slate-500">Payment Status:</span>
-              <span className="font-bold text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                {confirmedBooking.paymentMethod?.includes('COD') 
-                  ? 'PENDING (Pay in cash to transporter at delivery)'
-                  : 'PENDING (Gateway Activation Pending)'}
+              <span className={`font-bold text-[11px] px-2.5 py-0.5 rounded-full ${
+                confirmedBooking.paymentStatus === 'PAID'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+              }`}>
+                {confirmedBooking.paymentStatus === 'PAID'
+                  ? 'PAID (Online Payment Verified)'
+                  : 'PENDING (Pay cash to transporter upon delivery)'}
               </span>
             </div>
             <div className="flex justify-between border-b border-emerald-100 pb-2">

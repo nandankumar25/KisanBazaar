@@ -6,7 +6,9 @@ const {
   getTransportById,
   updateTransportStatus,
   updateTransportPayment,
+  cancelTransport,
 } = require('../controllers/transportController');
+const { protect } = require('../middleware/authMiddleware');
 
 router.route('/')
   .get(getTransports)
@@ -15,5 +17,6 @@ router.route('/')
 router.get('/:id', getTransportById);
 router.put('/:id/status', updateTransportStatus);
 router.put('/:id/payment', updateTransportPayment);
+router.put('/:id/cancel', protect, cancelTransport);
 
 module.exports = router;

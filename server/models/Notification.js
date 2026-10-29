@@ -27,6 +27,8 @@ const notificationSchema = new mongoose.Schema(
           'DEAL_CONFIRMED',
           'TRANSPORT_UPDATE',
           'TRANSPORT_BOOKING',
+          'TRANSPORT_CANCELLED',
+          'TRANSPORT_REFUND',
           'MANDI_BOOKING_NEW',
           'MANDI_BOOKING_ACCEPTED',
           'MANDI_BOOKING_SCHEDULED',

@@ -84,13 +84,54 @@ const transportSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    cancelledAt: {
+      type: Date,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     paymentStatus: {
       type: String,
       enum: {
-        values: ['PENDING', 'PAID', 'FAILED'],
+        values: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
         message: '{VALUE} is not a valid payment status',
       },
       default: 'PENDING',
+    },
+    refundStatus: {
+      type: String,
+      enum: {
+        values: ['NOT_APPLICABLE', 'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED'],
+        message: '{VALUE} is not a valid refund status',
+      },
+      default: 'NOT_APPLICABLE',
+    },
+    refundAmount: {
+      type: Number,
+      default: 0,
+      min: [0, 'Refund amount cannot be negative'],
+    },
+    refundTransactionId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    refundInitiatedAt: {
+      type: Date,
+    },
+    refundCompletedAt: {
+      type: Date,
+    },
+    refundReason: {
+      type: String,
+      trim: true,
+      default: '',
     },
     paymentMethod: {
       type: String,

@@ -1,0 +1,383 @@
+const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config({ path: path.join(__dirname, '../.env') });
+const http = require('http');
+const app = require('../server');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+
+const User = require('../models/User');
+const Mandi = require('../models/Mandi');
+const MandiBooking = require('../models/MandiBooking');
+const Transporter = require('../models/Transporter');
+const Transport = require('../models/Transport');
+const Notification = require('../models/Notification');
+
+async function runTransportCancellationTests() {
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(5008, resolve));
+  const baseUrl = 'http://localhost:5008/api';
+
+  console.log('====================================================');
+  console.log('Transport Cancellation & Automatic Refund Test Suite');
+  console.log('====================================================');
+
+  let passed = 0;
+  let failed = 0;
+
+  function assert(condition, message) {
+    if (condition) {
+      console.log(`✓ PASS: ${message}`);
+      passed++;
+    } else {
+      console.error(`✗ FAIL: ${message}`);
+      failed++;
+    }
+  }
+
+  const secret = process.env.JWT_SECRET || 'kisanbazaar_jwt_secret_key_2026';
+
+  try {
+    // 0. Cleanup previous test users
+    const testEmails = ['tc_farmer@test.com', 'tc_transporter@test.com'];
+    const existingUsers = await User.find({ email: { $in: testEmails } });
+    const userIds = existingUsers.map((u) => u._id);
+
+    await Transport.deleteMany({ farmer: { $in: userIds } });
+    await MandiBooking.deleteMany({ farmer: { $in: userIds } });
+    await Transporter.deleteMany({ user: { $in: userIds } });
+    await Notification.deleteMany({ $or: [{ recipient: { $in: userIds } }, { sender: { $in: userIds } }] });
+    await User.deleteMany({ email: { $in: testEmails } });
+
+    // 1. Create Farmer & Transporter users
+    const farmer = await User.create({
+      name: 'Balwinder Singh',
+      email: 'tc_farmer@test.com',
+      password: 'Password123',
+      phone: '9877711223',
+      role: 'FARMER',
+      location: { state: 'Punjab', district: 'Ludhiana', city: 'Khanna' },
+      isVerified: true,
+    });
+    const farmerToken = jwt.sign({ id: farmer._id }, secret, { expiresIn: '7d' });
+    const farmerHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${farmerToken}`,
+    };
+
+    const transporterUser = await User.create({
+      name: 'Gurpreet Transport Services',
+      email: 'tc_transporter@test.com',
+      password: 'Password123',
+      phone: '9877799887',
+      role: 'TRANSPORTER',
+      location: { state: 'Punjab', district: 'Ludhiana', city: 'Khanna' },
+      isVerified: true,
+    });
+    const transporterToken = jwt.sign({ id: transporterUser._id }, secret, { expiresIn: '7d' });
+    const transporterHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${transporterToken}`,
+    };
+
+    const transporterDoc = await Transporter.create({
+      user: transporterUser._id,
+      name: 'Gurpreet Transport Services',
+      phone: '9877799887',
+      vehicleType: '14-Wheeler Heavy Truck',
+      vehicleNumber: 'PB-10-CZ-8899',
+      capacity: 250,
+      pricePerKm: 24,
+      isAvailable: true,
+      location: { state: 'Punjab', district: 'Ludhiana', city: 'Khanna' },
+      serviceAreas: ['Ludhiana', 'Khanna', 'Patiala'],
+    });
+
+    let mandi = await Mandi.findOne({ state: 'Punjab' });
+    if (!mandi) {
+      mandi = await Mandi.create({
+        name: 'Khanna Grain Market Yard',
+        state: 'Punjab',
+        district: 'Ludhiana',
+        city: 'Khanna',
+        operatingHours: '08:00 AM - 06:00 PM',
+        cropsSupported: ['Wheat', 'Paddy'],
+      });
+    }
+
+    // Create a Mandi Sale Request
+    const mandiBooking = await MandiBooking.create({
+      bookingNumber: `MB-TC-${Date.now().toString().slice(-6)}`,
+      farmer: farmer._id,
+      mandi: mandi._id,
+      crop: 'Wheat4',
+      quantity: 50,
+      expectedPrice: 2200,
+      preferredArrivalDate: new Date(Date.now() + 86400000 * 2),
+      status: 'ACCEPTED',
+    });
+    assert(mandiBooking && mandiBooking._id, 'Mandi Sale Request created and accepted');
+
+    // ==============================================================
+    // Test 1: Farmer Books Transport with Online Payment
+    // ==============================================================
+    const bookRes1 = await fetch(`${baseUrl}/transports`, {
+      method: 'POST',
+      headers: farmerHeaders,
+      body: JSON.stringify({
+        farmer: farmer._id,
+        transporter: transporterDoc._id,
+        mandiBooking: mandiBooking._id,
+        cropName: 'Wheat4',
+        quantity: 50,
+        vehicleType: transporterDoc.vehicleType,
+        vehicleNumber: transporterDoc.vehicleNumber,
+        pickupLocation: 'Village Bhadla, Khanna',
+        destination: mandi.name,
+        distanceKm: 35,
+        totalCost: 840,
+        costPerQuintal: 16.8,
+        status: 'BOOKED',
+        paymentStatus: 'PAID',
+        paymentMethod: 'UPI',
+        paidAmount: 840,
+        transactionReference: 'TR-UPI-887766',
+        paymentGatewayStatus: 'SUCCESS',
+      }),
+    });
+    const bookData1 = await bookRes1.json();
+    assert(bookRes1.ok && bookData1.success, 'Farmer successfully booked transport with Online Payment (₹840)');
+    const booking1 = bookData1.data;
+    assert(booking1.paymentStatus === 'PAID' && booking1.paidAmount === 840, 'Payment status is PAID with paidAmount 840');
+
+    // ==============================================================
+    // Test 2: Prevent Duplicate Active Booking for Same Mandi Request
+    // ==============================================================
+    const duplicateRes = await fetch(`${baseUrl}/transports`, {
+      method: 'POST',
+      headers: farmerHeaders,
+      body: JSON.stringify({
+        farmer: farmer._id,
+        transporter: transporterDoc._id,
+        mandiBooking: mandiBooking._id,
+        cropName: 'Wheat4',
+        quantity: 50,
+        pickupLocation: 'Village Bhadla, Khanna',
+        destination: mandi.name,
+        distanceKm: 35,
+        totalCost: 840,
+        costPerQuintal: 16.8,
+        status: 'BOOKED',
+      }),
+    });
+    const duplicateData = await duplicateRes.json();
+    assert(duplicateRes.status === 400 && !duplicateData.success, 'Duplicate active booking correctly blocked with 400 error');
+
+    // ==============================================================
+    // Test 3: Transporter Rejects Booking -> Automatic Refund Triggered
+    // ==============================================================
+    const rejectRes = await fetch(`${baseUrl}/transports/${booking1._id}/status`, {
+      method: 'PUT',
+      headers: transporterHeaders,
+      body: JSON.stringify({
+        status: 'REJECTED',
+        rejectionReason: 'Vehicle undergoing emergency maintenance',
+      }),
+    });
+    const rejectData = await rejectRes.json();
+    assert(rejectRes.ok && rejectData.success, 'Transporter rejected booking');
+
+    const rejectedBooking = await Transport.findById(booking1._id);
+    assert(rejectedBooking.status === 'REJECTED', 'Transport status is REJECTED');
+    assert(rejectedBooking.refundStatus === 'REFUNDED', 'Automatic refund status is REFUNDED');
+    assert(rejectedBooking.refundAmount === 840, 'Refunded exact amount paid (₹840)');
+    assert(rejectedBooking.refundTransactionId.startsWith('REF-'), 'Valid refundTransactionId generated');
+    assert(rejectedBooking.paymentStatus === 'REFUNDED', 'Payment status updated to REFUNDED');
+
+    // Check Farmer received rejection notification with exact refund amount
+    const farmerNotifsRes = await fetch(`${baseUrl}/notifications`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const farmerNotifsData = await farmerNotifsRes.json();
+    const rejectNotif = farmerNotifsData.data?.find((n) => n.relatedTransport?.toString() === booking1._id.toString() && n.title.includes('Rejected'));
+    assert(rejectNotif && rejectNotif.message.includes('Wheat4') && rejectNotif.message.includes('840'), 'Farmer received rejection notification with crop and refund amount');
+
+    const refundNotif = farmerNotifsData.data?.find((n) => n.type === 'TRANSPORT_REFUND');
+    assert(refundNotif && refundNotif.message.includes('840'), 'Farmer received separate refund completion notification');
+
+    // Test Idempotency: Rejecting again should not double refund
+    const secondRejectRes = await fetch(`${baseUrl}/transports/${booking1._id}/status`, {
+      method: 'PUT',
+      headers: transporterHeaders,
+      body: JSON.stringify({ status: 'REJECTED' }),
+    });
+    const secondRejectBooking = await Transport.findById(booking1._id);
+    assert(secondRejectBooking.refundAmount === 840, 'Idempotency verified: refund amount unchanged on repeat rejection');
+
+    // ==============================================================
+    // Test 4: Farmer Creates New Booking with Cash on Delivery (COD)
+    // ==============================================================
+    const bookRes2 = await fetch(`${baseUrl}/transports`, {
+      method: 'POST',
+      headers: farmerHeaders,
+      body: JSON.stringify({
+        farmer: farmer._id,
+        transporter: transporterDoc._id,
+        mandiBooking: mandiBooking._id,
+        cropName: 'Wheat4',
+        quantity: 50,
+        vehicleType: transporterDoc.vehicleType,
+        vehicleNumber: transporterDoc.vehicleNumber,
+        pickupLocation: 'Village Bhadla, Khanna',
+        destination: mandi.name,
+        distanceKm: 35,
+        totalCost: 840,
+        costPerQuintal: 16.8,
+        status: 'BOOKED',
+        paymentStatus: 'PENDING',
+        paymentMethod: 'Cash on Delivery (COD)',
+        paidAmount: 0,
+        transactionReference: 'TR-COD-112233',
+        paymentGatewayStatus: 'COD_PENDING',
+      }),
+    });
+    const bookData2 = await bookRes2.json();
+    assert(bookRes2.ok && bookData2.success, 'Farmer successfully created new booking after rejection (COD)');
+    const booking2 = bookData2.data;
+
+    // Transporter rejects COD booking -> No refund should be processed
+    await fetch(`${baseUrl}/transports/${booking2._id}/status`, {
+      method: 'PUT',
+      headers: transporterHeaders,
+      body: JSON.stringify({
+        status: 'REJECTED',
+        rejectionReason: 'Driver schedule conflict',
+      }),
+    });
+    const rejectedCodBooking = await Transport.findById(booking2._id);
+    assert(rejectedCodBooking.status === 'REJECTED', 'COD booking rejected');
+    assert(rejectedCodBooking.refundStatus === 'NOT_APPLICABLE', 'COD refund status is NOT_APPLICABLE');
+    assert(rejectedCodBooking.refundAmount === 0, 'COD refund amount is 0');
+
+    // ==============================================================
+    // Test 5: Farmer Books, Transporter Accepts, Farmer Cancels (Online Refund)
+    // ==============================================================
+    const bookRes3 = await fetch(`${baseUrl}/transports`, {
+      method: 'POST',
+      headers: farmerHeaders,
+      body: JSON.stringify({
+        farmer: farmer._id,
+        transporter: transporterDoc._id,
+        mandiBooking: mandiBooking._id,
+        cropName: 'Wheat4',
+        quantity: 50,
+        vehicleType: transporterDoc.vehicleType,
+        vehicleNumber: transporterDoc.vehicleNumber,
+        pickupLocation: 'Village Bhadla, Khanna',
+        destination: mandi.name,
+        distanceKm: 35,
+        totalCost: 840,
+        costPerQuintal: 16.8,
+        status: 'BOOKED',
+        paymentStatus: 'PAID',
+        paymentMethod: 'Net Banking',
+        paidAmount: 840,
+        transactionReference: 'TR-NET-554433',
+      }),
+    });
+    const booking3 = (await bookRes3.json()).data;
+
+    // Transporter accepts booking
+    const acceptRes = await fetch(`${baseUrl}/transports/${booking3._id}/status`, {
+      method: 'PUT',
+      headers: transporterHeaders,
+      body: JSON.stringify({ status: 'ACCEPTED' }),
+    });
+    assert(acceptRes.ok, 'Transporter ACCEPTED the booking');
+
+    // Farmer Cancels Transport Booking
+    const cancelRes = await fetch(`${baseUrl}/transports/${booking3._id}/cancel`, {
+      method: 'PUT',
+      headers: farmerHeaders,
+      body: JSON.stringify({
+        cancellationReason: 'Selling directly at farm gate instead.',
+      }),
+    });
+    const cancelData = await cancelRes.json();
+    assert(cancelRes.ok && cancelData.success, 'Farmer successfully cancelled transport booking');
+
+    const cancelledBooking = await Transport.findById(booking3._id);
+    assert(cancelledBooking.status === 'CANCELLED', 'Transport status is CANCELLED');
+    assert(cancelledBooking.cancellationReason.includes('farm gate'), 'Cancellation reason recorded');
+    assert(cancelledBooking.cancelledAt !== null, 'Cancellation timestamp recorded');
+    assert(cancelledBooking.refundStatus === 'REFUNDED', 'Online payment automatically refunded upon cancellation');
+    assert(cancelledBooking.refundAmount === 840, 'Refunded full paid amount of ₹840');
+
+    // Check Transporter was notified about the cancellation
+    const transporterNotifsRes = await fetch(`${baseUrl}/notifications`, {
+      method: 'GET',
+      headers: transporterHeaders,
+    });
+    const transporterNotifsData = await transporterNotifsRes.json();
+    const cancelNotifForTransporter = transporterNotifsData.data?.find((n) => n.type === 'TRANSPORT_CANCELLED');
+    assert(cancelNotifForTransporter && cancelNotifForTransporter.message.includes('farm gate'), 'Transporter received cancellation notification with reason');
+
+    // Idempotency check: repeat cancellation is safe
+    const repeatCancelRes = await fetch(`${baseUrl}/transports/${booking3._id}/cancel`, {
+      method: 'PUT',
+      headers: farmerHeaders,
+      body: JSON.stringify({ reason: 'duplicate' }),
+    });
+    assert(repeatCancelRes.ok, 'Repeat cancellation request safely handled idempotently');
+
+    // ==============================================================
+    // Test 6: Completed Booking Cannot Be Cancelled
+    // ==============================================================
+    const bookRes4 = await fetch(`${baseUrl}/transports`, {
+      method: 'POST',
+      headers: farmerHeaders,
+      body: JSON.stringify({
+        farmer: farmer._id,
+        transporter: transporterDoc._id,
+        mandiBooking: mandiBooking._id,
+        cropName: 'Wheat4',
+        quantity: 50,
+        pickupLocation: 'Village Bhadla, Khanna',
+        destination: mandi.name,
+        distanceKm: 35,
+        totalCost: 840,
+        costPerQuintal: 16.8,
+        status: 'COMPLETED',
+      }),
+    });
+    const booking4 = (await bookRes4.json()).data;
+
+    const invalidCancelRes = await fetch(`${baseUrl}/transports/${booking4._id}/cancel`, {
+      method: 'PUT',
+      headers: farmerHeaders,
+      body: JSON.stringify({ reason: 'Try cancel completed' }),
+    });
+    assert(invalidCancelRes.status === 400, 'Attempting to cancel COMPLETED transport correctly returns 400 Bad Request');
+
+    // Cleanup test records
+    await Transport.deleteMany({ farmer: farmer._id });
+    await MandiBooking.deleteMany({ farmer: farmer._id });
+    await Transporter.deleteMany({ _id: transporterDoc._id });
+    await Notification.deleteMany({ $or: [{ recipient: farmer._id }, { recipient: transporterUser._id }] });
+    await User.deleteMany({ _id: { $in: [farmer._id, transporterUser._id] } });
+    console.log('✓ Cleaned up all test database records');
+  } catch (err) {
+    console.error('Test suite error:', err);
+    failed++;
+  } finally {
+    server.close();
+    await mongoose.connection.close();
+    console.log('====================================================');
+    console.log(`Test Results: ${passed} passed, ${failed} failed`);
+    console.log('====================================================');
+    process.exit(failed > 0 ? 1 : 0);
+  }
+}
+
+runTransportCancellationTests();

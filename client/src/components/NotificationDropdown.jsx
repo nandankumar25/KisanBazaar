@@ -155,6 +155,10 @@ const NotificationDropdown = () => {
       case 'TRANSPORT_BOOKING':
       case 'TRANSPORT_UPDATE':
         return <Truck className="w-4 h-4 text-emerald-600" />;
+      case 'TRANSPORT_CANCELLED':
+        return <XCircle className="w-4 h-4 text-rose-600" />;
+      case 'TRANSPORT_REFUND':
+        return <Receipt className="w-4 h-4 text-emerald-600" />;
       default:
         return <Bell className="w-4 h-4 text-slate-500" />;
     }

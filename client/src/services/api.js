@@ -324,6 +324,11 @@ export const updateTransportPayment = async (id, data) => {
   return response.data;
 };
 
+export const cancelTransportBooking = async (id, data = {}) => {
+  const response = await api.put(`/transports/${id}/cancel`, data);
+  return response.data;
+};
+
 // Buyer API Services
 export const getBuyers = async (params = {}) => {
   const response = await api.get('/buyers', { params });
