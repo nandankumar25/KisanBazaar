@@ -9,7 +9,6 @@ import {
   MessageSquare,
   Receipt,
   Clock,
-  ExternalLink,
   ChevronRight,
   Truck,
 } from 'lucide-react';
@@ -258,32 +257,18 @@ const NotificationDropdown = () => {
                       </div>
 
                       {isExpanded ? (
-                        <p className="text-[11px] text-slate-700 whitespace-normal break-words leading-relaxed mt-1">
-                          {notif.message}
-                        </p>
+                        <>
+                          <p className="text-[11px] text-slate-700 whitespace-normal break-words leading-relaxed mt-1">
+                            {notif.message}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1.5">
+                            Click to collapse
+                          </p>
+                        </>
                       ) : (
                         <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
                           {notif.message}
                         </p>
-                      )}
-
-                      {isExpanded && notif.link && (
-                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsOpen(false);
-                              setExpandedId(null);
-                              navigate(notif.link);
-                            }}
-                            className="inline-flex items-center text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition"
-                          >
-                            <span>View details</span>
-                            <ExternalLink className="w-3 h-3 ml-1" />
-                          </button>
-                          <span className="text-[10px] text-slate-400">Click to collapse</span>
-                        </div>
                       )}
                     </div>
 
