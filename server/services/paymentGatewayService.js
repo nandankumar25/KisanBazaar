@@ -199,7 +199,7 @@ const checkRefundStatus = async (transport) => {
 
   if (hasChanged) {
     await transport.save();
-    if (transport.refundStatus === 'REFUND_SUCCESSFUL' || transport.paymentStatus === 'REFUNDED') {
+    if (transport.refundStatus === 'REFUND_SUCCESSFUL' || transport.refundStatus === 'REFUNDED') {
       await updateRefundSuccessNotification(transport);
     }
   }

@@ -19,6 +19,32 @@ const getNotifications = async (req, res, next) => {
       Notification.countDocuments({ recipient: req.user._id }),
     ]);
 
+    // Auto-sync completed refund notifications so no stale "Initiated" status is displayed
+    const Transport = require('../models/Transport');
+    for (const notif of notifications) {
+      if (notif.type === 'TRANSPORT_REFUND' && notif.relatedTransport) {
+        if (notif.title === 'Transport Refund Initiated' || notif.message.includes('initiated')) {
+          const transportDoc = await Transport.findById(notif.relatedTransport);
+          if (
+            transportDoc &&
+            (transportDoc.refundStatus === 'REFUND_SUCCESSFUL' ||
+              transportDoc.refundStatus === 'REFUNDED')
+          ) {
+            const cropName = transportDoc.cropName || 'Produce';
+            const qty = transportDoc.quantity || 50;
+            const amt = transportDoc.refundAmount || transportDoc.paidAmount || transportDoc.totalCost || 840;
+            const actionWord = (transportDoc.status === 'CANCELLED' || String(transportDoc.cancellationReason || '').trim())
+              ? 'cancelled'
+              : 'rejected';
+
+            notif.title = 'Transport Refund Successful';
+            notif.message = `Your transport booking for ${cropName} (${qty} qtl) has been ${actionWord}. Your refund of ₹${amt} has been successfully credited to your original payment method.`;
+            await notif.save();
+          }
+        }
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: notifications,
