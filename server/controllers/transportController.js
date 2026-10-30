@@ -243,6 +243,29 @@ const updateTransportStatus = async (req, res, next) => {
                     link: `/payment-status?transportId=${refundBookingId}`,
                     relatedTransport: refundBookingId,
                   });
+
+                  // Record refund notification delivery timestamp and schedule timeline start at exactly 10s
+                  const notifDeliveredAt = new Date();
+                  const timelineStartAt = new Date(notifDeliveredAt.getTime() + 10000);
+                  await Transport.findByIdAndUpdate(refundBookingId, {
+                    refundNotificationSentAt: notifDeliveredAt,
+                    refundTimelineStartAt: timelineStartAt,
+                  });
+
+                  // Exactly 10 seconds after refund notification delivery, start the refund lifecycle timeline!
+                  setTimeout(async () => {
+                    try {
+                      const tDoc = await Transport.findById(refundBookingId);
+                      if (tDoc && tDoc.refundStatus !== 'REFUND_FAILED') {
+                        tDoc.refundStatus = 'REFUND_INITIATED';
+                        tDoc.paymentGatewayStatus = 'REFUND_INITIATED';
+                        tDoc.refundInitiatedAt = new Date();
+                        await tDoc.save();
+                      }
+                    } catch (tErr) {
+                      console.error('Failed to activate refund timeline at 10s:', tErr.message);
+                    }
+                  }, 10000);
                 }
               } catch (delayErr) {
                 console.error('Failed to send delayed refund notification:', delayErr.message);
@@ -533,6 +556,29 @@ const cancelTransport = async (req, res, next) => {
                 link: `/payment-status?transportId=${refundBookingId}`,
                 relatedTransport: refundBookingId,
               });
+
+              // Record refund notification delivery timestamp and schedule timeline start at exactly 10s
+              const notifDeliveredAt = new Date();
+              const timelineStartAt = new Date(notifDeliveredAt.getTime() + 10000);
+              await Transport.findByIdAndUpdate(refundBookingId, {
+                refundNotificationSentAt: notifDeliveredAt,
+                refundTimelineStartAt: timelineStartAt,
+              });
+
+              // Exactly 10 seconds after refund notification delivery, start the refund lifecycle timeline!
+              setTimeout(async () => {
+                try {
+                  const tDoc = await Transport.findById(refundBookingId);
+                  if (tDoc && tDoc.refundStatus !== 'REFUND_FAILED') {
+                    tDoc.refundStatus = 'REFUND_INITIATED';
+                    tDoc.paymentGatewayStatus = 'REFUND_INITIATED';
+                    tDoc.refundInitiatedAt = new Date();
+                    await tDoc.save();
+                  }
+                } catch (tErr) {
+                  console.error('Failed to activate refund timeline at 10s on cancellation:', tErr.message);
+                }
+              }, 10000);
             }
           } catch (delayErr) {
             console.error('Failed to send delayed refund notification on cancellation:', delayErr.message);
@@ -578,37 +624,90 @@ const getTransportPaymentStatus = async (req, res, next) => {
       String(transport.paymentMethod || '').includes('Cash') ||
       String(transport.paymentMethod || '').includes('COD');
 
+    // Exactly 10 seconds after the refund notification is delivered, start the refund lifecycle timeline
+    let isTimelineStarted = true;
+    let secondsUntilTimelineStart = 0;
+
+    if (transport.refundTimelineStartAt) {
+      const now = Date.now();
+      const targetTime = new Date(transport.refundTimelineStartAt).getTime();
+      if (now < targetTime) {
+        isTimelineStarted = false;
+        secondsUntilTimelineStart = Math.max(0, Math.ceil((targetTime - now) / 1000));
+      }
+    } else if (transport.refundNotificationSentAt) {
+      const now = Date.now();
+      const targetTime = new Date(transport.refundNotificationSentAt).getTime() + 10000;
+      if (now < targetTime) {
+        isTimelineStarted = false;
+        secondsUntilTimelineStart = Math.max(0, Math.ceil((targetTime - now) / 1000));
+      }
+    }
+
     const refundState = transport.refundStatus;
     const isFailed = refundState === 'REFUND_FAILED';
-    const isInitiated = ['REFUND_INITIATED', 'REFUND_PROCESSING', 'REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_FAILED'].includes(refundState);
-    const isProcessing = ['REFUND_PROCESSING', 'REFUNDED', 'REFUND_SUCCESSFUL'].includes(refundState);
-    const isSuccess = ['REFUNDED', 'REFUND_SUCCESSFUL'].includes(refundState);
+
+    // Stages confirmed states
+    // Turn each stage green ONLY when its corresponding status is confirmed!
+    const isStage1Confirmed = isTimelineStarted && ['REFUND_INITIATED', 'REFUND_PROCESSING', 'REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_FAILED'].includes(refundState);
+    const isStage2Confirmed = isTimelineStarted && ['REFUNDED', 'REFUND_SUCCESSFUL'].includes(refundState);
+    const isStage2Processing = isTimelineStarted && refundState === 'REFUND_PROCESSING';
+    const isStage3Confirmed = isTimelineStarted && ['REFUNDED', 'REFUND_SUCCESSFUL'].includes(refundState);
+
+    // Connecting lines turn green only when stage status is confirmed!
+    // Line 1 (Stage 1 -> Stage 2): turns green when Stage 1 is confirmed
+    // Line 2 (Stage 2 -> Stage 3): turns green when Stage 2 is confirmed
+    const line1Green = isStage1Confirmed;
+    const line2Green = isStage2Confirmed;
 
     const timeline = [
       {
         id: 'INITIATED',
         title: 'Refund Initiated',
-        status: isInitiated ? 'COMPLETED' : 'PENDING',
-        timestamp: transport.refundInitiatedAt || null,
-        description: 'Refund request registered with payment gateway banking switch.',
+        status: isStage1Confirmed
+          ? 'COMPLETED'
+          : (!isTimelineStarted ? 'AWAITING_ACTIVATION' : 'PENDING'),
+        isGreen: isStage1Confirmed,
+        timestamp: isStage1Confirmed
+          ? (transport.refundInitiatedAt || transport.refundTimelineStartAt || null)
+          : null,
+        description: !isTimelineStarted
+          ? (secondsUntilTimelineStart > 0
+              ? `Timeline activates in ${secondsUntilTimelineStart}s (10s after refund notification delivery).`
+              : 'Awaiting timeline activation...')
+          : 'Refund request registered and activated with payment gateway switch.',
       },
       {
         id: 'PROCESSING',
         title: 'Refund Processing',
-        status: isProcessing ? (isSuccess ? 'COMPLETED' : 'IN_PROGRESS') : (isFailed ? 'FAILED' : (isInitiated ? 'IN_PROGRESS' : 'PENDING')),
-        timestamp: transport.refundInitiatedAt || null,
+        status: isStage2Confirmed
+          ? 'COMPLETED'
+          : (isStage2Processing
+              ? 'IN_PROGRESS'
+              : (isFailed ? 'FAILED' : 'PENDING')),
+        isGreen: isStage2Confirmed,
+        timestamp: isStage2Processing || isStage2Confirmed ? (transport.refundInitiatedAt || null) : null,
         description: isFailed
           ? 'Gateway encountered an issue during bank settlement processing.'
-          : 'Payment gateway is communicating with beneficiary bank clearing network.',
+          : (isStage2Processing
+              ? 'Payment gateway is communicating with beneficiary bank clearing network.'
+              : isStage2Confirmed
+              ? 'Beneficiary bank network successfully verified and cleared transaction.'
+              : 'Awaiting bank clearing transmission.'),
       },
       {
         id: isFailed ? 'FAILED' : 'SUCCESSFUL',
         title: isFailed ? 'Refund Failed' : 'Refund Successful',
-        status: isSuccess ? 'COMPLETED' : (isFailed ? 'FAILED' : 'PENDING'),
+        status: isStage3Confirmed
+          ? 'COMPLETED'
+          : (isFailed ? 'FAILED' : 'PENDING'),
+        isGreen: isStage3Confirmed,
         timestamp: transport.refundCompletedAt || null,
         description: isFailed
           ? (transport.refundReason || 'Gateway failed to credit source account: Issuer bank technical decline.')
-          : `Amount of ₹${transport.refundAmount || transport.paidAmount} successfully credited back to original payment method.`,
+          : (isStage3Confirmed
+              ? `Amount of ₹${transport.refundAmount || transport.paidAmount} successfully credited back to original payment method.`
+              : 'Funds will credit to original account upon bank settlement.'),
       },
     ];
 
@@ -618,6 +717,10 @@ const getTransportPaymentStatus = async (req, res, next) => {
       gatewayResponse: gatewayStatusResult?.gatewayResponse || transport.gatewayResponse,
       timeline,
       isCod,
+      isTimelineStarted,
+      secondsUntilTimelineStart,
+      line1Green,
+      line2Green,
     });
   } catch (error) {
     next(error);

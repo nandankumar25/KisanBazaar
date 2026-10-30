@@ -376,6 +376,55 @@ async function runTransportCancellationTests() {
       'Cancellation delayed refund notification text dynamically includes crop, quantity, and ₹840'
     );
 
+    // ==============================================================
+    // Test 5B: Verify 10-Second Delay Before Timeline Activation & Line 1 Turning Green
+    // ==============================================================
+    console.log('Verifying refund timeline state immediately after refund notification delivery (before 10s)...');
+    const paymentPreTimelineRes = await fetch(`${baseUrl}/transports/${booking3._id}/payment-status`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const paymentPreTimelineData = await paymentPreTimelineRes.json();
+    assert(paymentPreTimelineRes.ok, 'Fetched payment status immediately after refund notification');
+    assert(
+      paymentPreTimelineData.isTimelineStarted === false,
+      'Refund timeline is NOT started immediately upon refund notification delivery (awaiting 10s)'
+    );
+    assert(
+      paymentPreTimelineData.line1Green === false,
+      'Connecting line 1 is NOT green before the 10-second delay elapses'
+    );
+    assert(
+      paymentPreTimelineData.timeline[0].isGreen === false,
+      'Stage 1 (Refund Initiated) is NOT green before the 10-second delay elapses'
+    );
+    assert(
+      paymentPreTimelineData.secondsUntilTimelineStart > 0 && paymentPreTimelineData.secondsUntilTimelineStart <= 10,
+      `Countdown secondsUntilTimelineStart correctly reports remaining time (${paymentPreTimelineData.secondsUntilTimelineStart}s)`
+    );
+
+    console.log('Waiting 10.5s for exact 10s post-notification timeline activation...');
+    await new Promise((resolve) => setTimeout(resolve, 10500));
+
+    // After 10s: Timeline MUST be active, Stage 1 confirmed, and Connecting Line 1 turned green!
+    const paymentPostTimelineRes = await fetch(`${baseUrl}/transports/${booking3._id}/payment-status`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const paymentPostTimelineData = await paymentPostTimelineRes.json();
+    assert(
+      paymentPostTimelineData.isTimelineStarted === true,
+      'Exactly 10 seconds after refund notification, refund lifecycle timeline is STARTED'
+    );
+    assert(
+      paymentPostTimelineData.timeline[0].isGreen === true,
+      'Stage 1 (Refund Initiated) circle turned green once confirmed'
+    );
+    assert(
+      paymentPostTimelineData.line1Green === true,
+      'Connecting line 1 turned GREEN upon timeline activation & Stage 1 confirmation'
+    );
+
     // Check Transporter was notified about the cancellation
     const transporterNotifsRes = await fetch(`${baseUrl}/notifications`, {
       method: 'GET',

@@ -35,11 +35,12 @@ const checkRefundStatus = async (transport) => {
   if (!transport) return null;
 
   // Not applicable or non-refundable bookings
-  if (transport.refundStatus === 'NOT_APPLICABLE' || !transport.refundInitiatedAt) {
+  if (transport.refundStatus === 'NOT_APPLICABLE') {
     return {
       status: transport.refundStatus,
       paymentGatewayStatus: transport.paymentGatewayStatus,
       gatewayResponse: transport.gatewayResponse,
+      isTimelineStarted: false,
     };
   }
 
@@ -49,6 +50,7 @@ const checkRefundStatus = async (transport) => {
       status: transport.refundStatus,
       paymentGatewayStatus: transport.paymentGatewayStatus,
       gatewayResponse: transport.gatewayResponse,
+      isTimelineStarted: true,
     };
   }
 
@@ -58,7 +60,24 @@ const checkRefundStatus = async (transport) => {
       status: 'REFUND_FAILED',
       paymentGatewayStatus: transport.paymentGatewayStatus,
       gatewayResponse: transport.gatewayResponse,
+      isTimelineStarted: true,
     };
+  }
+
+  // Check if timeline is waiting for the 10 seconds post-refund-notification delivery
+  if (transport.refundTimelineStartAt) {
+    const now = Date.now();
+    const targetStart = new Date(transport.refundTimelineStartAt).getTime();
+    if (now < targetStart) {
+      // Timeline not started yet (waiting 10 seconds after notification delivery)
+      return {
+        status: transport.refundStatus,
+        paymentGatewayStatus: 'AWAITING_ACTIVATION',
+        gatewayResponse: transport.gatewayResponse,
+        isTimelineStarted: false,
+        secondsUntilTimelineStart: Math.ceil((targetStart - now) / 1000),
+      };
+    }
   }
 
   // If already successful, return current record
@@ -67,17 +86,24 @@ const checkRefundStatus = async (transport) => {
       status: 'REFUND_SUCCESSFUL',
       paymentGatewayStatus: transport.paymentGatewayStatus || 'REFUND_SUCCESSFUL',
       gatewayResponse: transport.gatewayResponse,
+      isTimelineStarted: true,
     };
   }
 
-  // Realistic Gateway Lifecycle progression based on elapsed time since refundInitiatedAt
-  const elapsedMs = Date.now() - new Date(transport.refundInitiatedAt).getTime();
+  // Timeline has started: ensure refundInitiatedAt is set
+  let hasChanged = false;
+  if (!transport.refundInitiatedAt) {
+    transport.refundInitiatedAt = new Date();
+    hasChanged = true;
+  }
+
+  // Base timestamp for lifecycle progression
+  const baseTimestamp = transport.refundTimelineStartAt || transport.refundInitiatedAt;
+  const elapsedMs = Date.now() - new Date(baseTimestamp).getTime();
   const elapsedSec = elapsedMs / 1000;
 
-  let hasChanged = false;
-
   if (elapsedSec >= 25) {
-    // 25+ seconds: Bank clears and confirms refund settlement
+    // 25+ seconds after timeline start: Bank clears and confirms refund settlement
     transport.refundStatus = 'REFUND_SUCCESSFUL';
     transport.paymentGatewayStatus = 'REFUND_SUCCESSFUL';
     transport.paymentStatus = 'REFUNDED';
@@ -94,8 +120,8 @@ const checkRefundStatus = async (transport) => {
       updatedAt: new Date(),
     };
     hasChanged = true;
-  } else if (elapsedSec >= 10 && transport.refundStatus === 'REFUND_INITIATED') {
-    // 10 - 25 seconds: Transmitted to NPCI / Beneficiary Bank
+  } else if (elapsedSec >= 10 && (transport.refundStatus === 'REFUND_INITIATED' || transport.refundStatus === 'REFUND_PENDING')) {
+    // 10 - 25 seconds after timeline start: Transmitted to NPCI / Beneficiary Bank
     transport.refundStatus = 'REFUND_PROCESSING';
     transport.paymentGatewayStatus = 'REFUND_PROCESSING';
     transport.gatewayResponse = {
@@ -105,6 +131,10 @@ const checkRefundStatus = async (transport) => {
       code: 'GW_102_PROCESSING',
       updatedAt: new Date(),
     };
+    hasChanged = true;
+  } else if (transport.refundStatus === 'REFUND_PENDING') {
+    transport.refundStatus = 'REFUND_INITIATED';
+    transport.paymentGatewayStatus = 'REFUND_INITIATED';
     hasChanged = true;
   }
 
@@ -116,6 +146,7 @@ const checkRefundStatus = async (transport) => {
     status: transport.refundStatus,
     paymentGatewayStatus: transport.paymentGatewayStatus,
     gatewayResponse: transport.gatewayResponse,
+    isTimelineStarted: true,
   };
 };
 

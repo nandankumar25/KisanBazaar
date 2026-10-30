@@ -145,6 +145,12 @@ const transportSchema = new mongoose.Schema(
     refundCompletedAt: {
       type: Date,
     },
+    refundNotificationSentAt: {
+      type: Date,
+    },
+    refundTimelineStartAt: {
+      type: Date,
+    },
     refundReason: {
       type: String,
       trim: true,

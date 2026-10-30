@@ -14,9 +14,9 @@ import {
   Building2,
   PackageCheck,
   ChevronRight,
-  ChevronDown,
   ExternalLink,
   Info,
+  Timer,
 } from 'lucide-react';
 import {
   getTransportPaymentStatus,
@@ -42,7 +42,9 @@ const getDefaultDemoTransport = () => ({
   transactionReference: 'TR-UPI-887766',
   refundTransactionId: 'REF-78901234',
   gatewayRefundId: 'RFND-GW-78901234',
-  refundInitiatedAt: new Date(Date.now() - 3600000),
+  refundNotificationSentAt: new Date(Date.now() - 3600000),
+  refundTimelineStartAt: new Date(Date.now() - 3590000),
+  refundInitiatedAt: new Date(Date.now() - 3590000),
   refundCompletedAt: new Date(Date.now() - 1800000),
   refundReason: 'Transporter vehicle unavailable',
   transporter: {
@@ -64,20 +66,23 @@ const getDefaultDemoTimeline = () => [
     id: 'INITIATED',
     title: 'Refund Initiated',
     status: 'COMPLETED',
-    timestamp: new Date(Date.now() - 3600000),
-    description: 'Refund request registered with payment gateway switch.',
+    isGreen: true,
+    timestamp: new Date(Date.now() - 3590000),
+    description: 'Refund request registered and activated with payment gateway switch.',
   },
   {
     id: 'PROCESSING',
     title: 'Refund Processing',
     status: 'COMPLETED',
-    timestamp: new Date(Date.now() - 3600000),
-    description: 'Transmitted to NPCI / Beneficiary Bank, settlement in clearing cycle.',
+    isGreen: true,
+    timestamp: new Date(Date.now() - 3590000),
+    description: 'Beneficiary bank network successfully verified and cleared transaction.',
   },
   {
     id: 'SUCCESSFUL',
     title: 'Refund Successful',
     status: 'COMPLETED',
+    isGreen: true,
     timestamp: new Date(Date.now() - 1800000),
     description: 'Amount of ₹840 successfully credited back to original payment method.',
   },
@@ -100,6 +105,10 @@ const PaymentStatus = () => {
   const [error, setError] = useState(null);
   const [lastPolledAt, setLastPolledAt] = useState(null);
   const [myTransports, setMyTransports] = useState([]);
+  const [isTimelineStarted, setIsTimelineStarted] = useState(true);
+  const [secondsUntilTimelineStart, setSecondsUntilTimelineStart] = useState(0);
+  const [line1Green, setLine1Green] = useState(false);
+  const [line2Green, setLine2Green] = useState(false);
   const [showSimPanel, setShowSimPanel] = useState(false);
   const [simLoading, setSimLoading] = useState(false);
   const [simMessage, setSimMessage] = useState(null);
@@ -122,6 +131,9 @@ const PaymentStatus = () => {
         // Fallback to sample / demo refund tracking if farmer has no bookings
         setTransport((prev) => prev || getDefaultDemoTransport());
         setTimeline((prev) => (prev && prev.length ? prev : getDefaultDemoTimeline()));
+        setIsTimelineStarted(true);
+        setLine1Green(true);
+        setLine2Green(true);
         setLastPolledAt(new Date());
         setLoading(false);
         return;
@@ -136,6 +148,10 @@ const PaymentStatus = () => {
           setTransport(res.data);
           setTimeline(res.timeline || []);
           setGatewayResponse(res.gatewayResponse || res.data.gatewayResponse || null);
+          setIsTimelineStarted(res.isTimelineStarted !== undefined ? res.isTimelineStarted : true);
+          setSecondsUntilTimelineStart(res.secondsUntilTimelineStart || 0);
+          setLine1Green(Boolean(res.line1Green));
+          setLine2Green(Boolean(res.line2Green));
           setLastPolledAt(new Date());
           setError(null);
         } else {
@@ -147,6 +163,9 @@ const PaymentStatus = () => {
         if (err.response?.status === 404) {
           setTransport(getDefaultDemoTransport());
           setTimeline(getDefaultDemoTimeline());
+          setIsTimelineStarted(true);
+          setLine1Green(true);
+          setLine2Green(true);
           setLastPolledAt(new Date());
           setError(null);
         } else {
@@ -251,6 +270,12 @@ const PaymentStatus = () => {
   const isProcessing = refundStatus === 'REFUND_PROCESSING';
   const isInitiated = refundStatus === 'REFUND_INITIATED';
 
+  // Stages confirmation: Turn each stage green only when its corresponding status is confirmed!
+  const stage1Confirmed = isTimelineStarted && (isInitiated || isProcessing || isSuccess || isFailed);
+  const stage2Confirmed = isTimelineStarted && isSuccess;
+  const stage2Processing = isTimelineStarted && isProcessing;
+  const stage3Confirmed = isTimelineStarted && isSuccess;
+
   const refundAmount = transport?.refundAmount || transport?.paidAmount || transport?.totalCost || 840;
   const bookingCode = transport?._id ? `#TR-${transport._id.slice(-8).toUpperCase()}` : '#TR-884920';
   const cropDisplay = transport?.cropName
@@ -258,6 +283,14 @@ const PaymentStatus = () => {
     : 'Wheat4 (50 Qtl)';
 
   const getStatusBadge = () => {
+    if (!isTimelineStarted) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded-full text-xs font-bold tracking-wide uppercase">
+          <Timer className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+          Awaiting Activation ({secondsUntilTimelineStart}s)
+        </span>
+      );
+    }
     if (isSuccess) {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-xs font-bold tracking-wide uppercase">
@@ -426,7 +459,19 @@ const PaymentStatus = () => {
 
               {/* Status Notice Banner */}
               <div className="mt-6">
-                {isSuccess && (
+                {!isTimelineStarted && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-950 text-xs">
+                    <Timer className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                    <div>
+                      <strong className="block font-bold text-amber-950">
+                        Refund Notification Delivered — Timeline Starting Soon
+                      </strong>
+                      The refund notification has been delivered to your dashboard. The refund lifecycle timeline will activate exactly 10 seconds after delivery ({secondsUntilTimelineStart}s remaining).
+                    </div>
+                  </div>
+                )}
+
+                {isTimelineStarted && isSuccess && (
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3 text-emerald-900 text-xs">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
@@ -444,31 +489,31 @@ const PaymentStatus = () => {
                   </div>
                 )}
 
-                {isProcessing && (
+                {isTimelineStarted && isProcessing && (
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3 text-blue-900 text-xs">
                     <Loader2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5 animate-spin" />
                     <div>
                       <strong className="block font-bold text-blue-950">
                         Refund Processing in Progress
                       </strong>
-                      The payment gateway has accepted your refund request. Banking clearing network is currently settling the transaction. This page will automatically update once confirmed.
+                      The payment gateway has accepted your refund request. Banking clearing network is currently settling the transaction. This page updates every 5 seconds from the backend.
                     </div>
                   </div>
                 )}
 
-                {isInitiated && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900 text-xs">
-                    <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                {isTimelineStarted && isInitiated && (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3 text-emerald-950 text-xs">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="block font-bold text-amber-950">
-                        Refund Request Initiated
+                      <strong className="block font-bold text-emerald-950">
+                        Refund Timeline Activated — Initiated
                       </strong>
-                      Your transport booking was cancelled/rejected. The refund has been registered with the payment gateway switch and is queued for bank settlement.
+                      Timeline activated 10 seconds following refund notification delivery. The refund is registered with the banking switch.
                     </div>
                   </div>
                 )}
 
-                {isFailed && (
+                {isTimelineStarted && isFailed && (
                   <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900 text-xs">
                     <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                     <div>
@@ -497,7 +542,7 @@ const PaymentStatus = () => {
               </div>
             </div>
 
-            {/* Visual Refund Timeline */}
+            {/* Visual Refund Timeline with Dynamic Green Connecting Lines */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -506,40 +551,63 @@ const PaymentStatus = () => {
                     Refund Lifecycle Timeline
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Stage-by-stage status directly from payment gateway response
+                    Activated 10s after refund notification • Auto-refreshes every 5s from backend
                   </p>
                 </div>
-                <span className="text-[11px] font-mono font-semibold text-slate-400">
-                  3 Stages
-                </span>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                  <span className={`w-2 h-2 rounded-full ${isTimelineStarted ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
+                  <span>{isTimelineStarted ? 'Timeline Active' : `Starts in ${secondsUntilTimelineStart}s`}</span>
+                </div>
               </div>
 
-              {/* Timeline Flow */}
-              <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-3 sm:before:left-4 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
-                {/* Step 1: Refund Initiated */}
-                <div className="relative flex items-start gap-4">
-                  <div
-                    className={`absolute -left-6 sm:-left-8 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ring-4 ring-white ${
-                      isInitiated || isProcessing || isSuccess || isFailed
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'bg-slate-200 text-slate-500'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              {/* Segmented Timeline Flow with Separate Connecting Lines */}
+              <div className="space-y-0">
+                {/* Stage 1: Refund Initiated */}
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${
+                        stage1Confirmed
+                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-100'
+                          : 'bg-slate-100 text-slate-400 border border-slate-300'
+                      }`}
+                    >
+                      {stage1Confirmed ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <Clock className="w-5 h-5 animate-pulse text-amber-600" />
+                      )}
+                    </div>
                   </div>
+
                   <div className="flex-1 bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <h3 className="text-xs font-bold text-slate-900">1. Refund Initiated</h3>
-                      {transport?.refundInitiatedAt && (
+                      <div className="flex items-center gap-2">
+                        <h3 className={`text-xs font-bold ${stage1Confirmed ? 'text-emerald-950 font-black' : 'text-slate-800'}`}>
+                          1. Refund Initiated
+                        </h3>
+                        {stage1Confirmed ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                            Confirmed
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                            Awaiting Activation
+                          </span>
+                        )}
+                      </div>
+                      {stage1Confirmed && (transport?.refundInitiatedAt || transport?.refundTimelineStartAt) && (
                         <span className="text-[11px] text-slate-500 font-mono">
-                          {new Date(transport.refundInitiatedAt).toLocaleString()}
+                          {new Date(transport.refundInitiatedAt || transport.refundTimelineStartAt).toLocaleString()}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-slate-600 mt-1">
-                      Cancellation/rejection confirmed. Refund request registered with payment gateway switch.
+                      {stage1Confirmed
+                        ? 'Refund activated exactly 10 seconds following refund notification delivery and registered with banking switch.'
+                        : `Awaiting timeline activation (starts exactly 10s after refund notification delivery: ${secondsUntilTimelineStart}s remaining).`}
                     </p>
-                    {transport?.refundTransactionId && (
+                    {transport?.refundTransactionId && stage1Confirmed && (
                       <div className="mt-2 text-[11px] font-mono text-slate-700 bg-white px-2.5 py-1 rounded border border-slate-200 w-fit">
                         Transaction Ref: {transport.refundTransactionId}
                       </div>
@@ -547,74 +615,126 @@ const PaymentStatus = () => {
                   </div>
                 </div>
 
-                {/* Step 2: Refund Processing */}
-                <div className="relative flex items-start gap-4">
+                {/* Connecting Line 1 (Stage 1 to Stage 2) - Turns GREEN when Stage 1 is confirmed! */}
+                <div className="pl-[17px] py-1">
                   <div
-                    className={`absolute -left-6 sm:-left-8 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ring-4 ring-white ${
-                      isSuccess
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : isProcessing
-                        ? 'bg-blue-600 text-white shadow-md animate-pulse'
-                        : isFailed
-                        ? 'bg-rose-600 text-white shadow-sm'
-                        : 'bg-slate-200 text-slate-500'
+                    className={`w-0.5 h-10 transition-colors duration-700 ${
+                      line1Green || stage1Confirmed ? 'bg-emerald-600 ring-1 ring-emerald-300' : 'bg-slate-200'
                     }`}
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-                    ) : isSuccess ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    ) : isFailed ? (
-                      <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    )}
+                  />
+                </div>
+
+                {/* Stage 2: Refund Processing */}
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${
+                        stage2Confirmed
+                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-100'
+                          : stage2Processing
+                          ? 'bg-blue-600 text-white ring-4 ring-blue-100 animate-pulse shadow-md'
+                          : isFailed
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-slate-100 text-slate-400 border border-slate-300'
+                      }`}
+                    >
+                      {stage2Confirmed ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : stage2Processing ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : isFailed ? (
+                        <XCircle className="w-5 h-5" />
+                      ) : (
+                        <Clock className="w-5 h-5" />
+                      )}
+                    </div>
                   </div>
+
                   <div
-                    className={`flex-1 p-4 rounded-xl border ${
-                      isProcessing
-                        ? 'bg-blue-50/60 border-blue-200 ring-2 ring-blue-100'
+                    className={`flex-1 p-4 rounded-xl border transition-all ${
+                      stage2Processing
+                        ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
+                        : stage2Confirmed
+                        ? 'bg-slate-50/80 border-slate-200/80'
                         : 'bg-slate-50/80 border-slate-200/80'
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <h3 className="text-xs font-bold text-slate-900">2. Refund Processing</h3>
-                      <span className="text-[11px] font-semibold text-blue-700">
-                        {isProcessing ? 'In Progress' : isSuccess ? 'Completed' : isFailed ? 'Failed' : 'Pending'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <h3 className={`text-xs font-bold ${stage2Confirmed ? 'text-emerald-950 font-black' : 'text-slate-800'}`}>
+                          2. Refund Processing
+                        </h3>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            stage2Confirmed
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : stage2Processing
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {stage2Confirmed
+                            ? 'Confirmed'
+                            : stage2Processing
+                            ? 'In Progress (Processing with Bank)'
+                            : 'Pending'}
+                        </span>
+                      </div>
                     </div>
                     <p className="text-xs text-slate-600 mt-1">
-                      Payment gateway transmits clearing batch to beneficiary bank network (NPCI / UPI / Card issuer).
+                      {stage2Confirmed
+                        ? 'Payment gateway transmitted clearing batch to beneficiary bank network and confirmed clearance.'
+                        : stage2Processing
+                        ? 'Payment gateway is transmitting clearing batch to beneficiary bank network (NPCI / UPI / Card issuer).'
+                        : 'Awaiting bank network clearing transmission.'}
                     </p>
-                    {gatewayResponse?.gatewayMessage && (
+                    {gatewayResponse?.gatewayMessage && (stage2Processing || stage2Confirmed) && (
                       <div className="mt-2 text-[11px] text-slate-700 bg-white px-2.5 py-1 rounded border border-slate-200 w-fit flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        <span className={`w-1.5 h-1.5 rounded-full ${stage2Confirmed ? 'bg-emerald-500' : 'bg-blue-500'}`} />
                         <span>Gateway: {gatewayResponse.gatewayMessage}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Step 3: Refund Successful OR Refund Failed */}
-                <div className="relative flex items-start gap-4">
+                {/* Connecting Line 2 (Stage 2 to Stage 3) - Turns GREEN when Stage 2 is confirmed! */}
+                <div className="pl-[17px] py-1">
                   <div
-                    className={`absolute -left-6 sm:-left-8 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ring-4 ring-white ${
-                      isSuccess
-                        ? 'bg-emerald-600 text-white shadow-md'
+                    className={`w-0.5 h-10 transition-colors duration-700 ${
+                      line2Green || stage2Confirmed
+                        ? 'bg-emerald-600 ring-1 ring-emerald-300'
                         : isFailed
-                        ? 'bg-rose-600 text-white shadow-md'
-                        : 'bg-slate-200 text-slate-500'
+                        ? 'bg-rose-500'
+                        : 'bg-slate-200'
                     }`}
-                  >
-                    {isFailed ? (
-                      <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    ) : (
-                      <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    )}
+                  />
+                </div>
+
+                {/* Stage 3: Refund Successful OR Refund Failed */}
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${
+                        stage3Confirmed
+                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 shadow-md'
+                          : isFailed
+                          ? 'bg-rose-600 text-white ring-4 ring-rose-100 shadow-md'
+                          : 'bg-slate-100 text-slate-400 border border-slate-300'
+                      }`}
+                    >
+                      {isFailed ? (
+                        <XCircle className="w-5 h-5" />
+                      ) : stage3Confirmed ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <CheckCircle2 className="w-5 h-5 text-slate-400" />
+                      )}
+                    </div>
                   </div>
+
                   <div
-                    className={`flex-1 p-4 rounded-xl border ${
-                      isSuccess
+                    className={`flex-1 p-4 rounded-xl border transition-all ${
+                      stage3Confirmed
                         ? 'bg-emerald-50/60 border-emerald-200 ring-2 ring-emerald-100'
                         : isFailed
                         ? 'bg-rose-50/60 border-rose-200 ring-2 ring-rose-100'
@@ -622,14 +742,27 @@ const PaymentStatus = () => {
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <h3
-                        className={`text-xs font-bold ${
-                          isFailed ? 'text-rose-900' : isSuccess ? 'text-emerald-950' : 'text-slate-900'
-                        }`}
-                      >
-                        {isFailed ? '3. Refund Failed' : '3. Refund Successful'}
-                      </h3>
-                      {transport?.refundCompletedAt && (
+                      <div className="flex items-center gap-2">
+                        <h3
+                          className={`text-xs font-bold ${
+                            isFailed ? 'text-rose-900 font-black' : stage3Confirmed ? 'text-emerald-950 font-black' : 'text-slate-900'
+                          }`}
+                        >
+                          {isFailed ? '3. Refund Failed' : '3. Refund Successful'}
+                        </h3>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            isFailed
+                              ? 'bg-rose-100 text-rose-800'
+                              : stage3Confirmed
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {isFailed ? 'Declined' : stage3Confirmed ? 'Confirmed' : 'Pending'}
+                        </span>
+                      </div>
+                      {transport?.refundCompletedAt && stage3Confirmed && (
                         <span className="text-[11px] text-slate-500 font-mono">
                           {new Date(transport.refundCompletedAt).toLocaleString()}
                         </span>
@@ -637,10 +770,12 @@ const PaymentStatus = () => {
                     </div>
                     <p className="text-xs text-slate-600 mt-1">
                       {isFailed
-                        ? transport?.refundReason || 'Gateway failed to credit source account.'
-                        : `Amount of ₹${refundAmount} successfully credited back to original payment method.`}
+                        ? transport?.refundReason || 'Gateway failed to credit source account: Issuer bank technical decline.'
+                        : stage3Confirmed
+                        ? `Amount of ₹${refundAmount} successfully credited back to original payment method (${transport?.paymentMethod || 'Online'}).`
+                        : 'Awaiting final bank settlement confirmation.'}
                     </p>
-                    {gatewayResponse?.bankArn && (
+                    {gatewayResponse?.bankArn && stage3Confirmed && (
                       <div className="mt-2 text-[11px] font-mono text-emerald-800 bg-white px-2.5 py-1 rounded border border-emerald-200 w-fit">
                         Bank Settlement ARN: {gatewayResponse.bankArn}
                       </div>
