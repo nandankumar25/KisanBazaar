@@ -529,6 +529,30 @@ async function runTransportCancellationTests() {
     assert(checkSuccessData.data.refundStatus === 'REFUND_SUCCESSFUL', 'Backend data updated to REFUND_SUCCESSFUL');
     assert(checkSuccessData.timeline[2].title === 'Refund Successful', 'Timeline stage 3 dynamically updated to "Refund Successful"');
 
+    // ==============================================================
+    // Test 9: Refund Successful Notification Update Verification
+    // ==============================================================
+    const farmerUpdatedNotifsRes = await fetch(`${baseUrl}/notifications`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const farmerUpdatedNotifsData = await farmerUpdatedNotifsRes.json();
+
+    const refundNotifsForBooking = farmerUpdatedNotifsData.data?.filter(
+      (n) => n.relatedTransport?.toString() === booking3._id.toString() && n.type === 'TRANSPORT_REFUND'
+    );
+    const staleInitiatedNotif = refundNotifsForBooking?.find((n) => n.title === 'Transport Refund Initiated');
+    assert(!staleInitiatedNotif, 'Stale "Transport Refund Initiated" notification is no longer shown after refund completion');
+
+    const successRefundNotif = refundNotifsForBooking?.find((n) => n.title === 'Transport Refund Successful');
+    assert(successRefundNotif, 'Notification title updated to "Transport Refund Successful"');
+    assert(
+      successRefundNotif &&
+        successRefundNotif.message ===
+          'Your transport booking for Wheat4 (50 qtl) has been cancelled. Your refund of ₹840 has been successfully credited to your original payment method.',
+      'Notification message updated with dynamic crop (Wheat4), quantity (50 qtl), and amount (₹840) to "successfully credited to your original payment method"'
+    );
+
     // Cleanup test records
     await Transport.deleteMany({ farmer: farmer._id });
     await MandiBooking.deleteMany({ farmer: farmer._id });

@@ -4,6 +4,64 @@
  * and live gateway response status checks.
  */
 
+/**
+ * Update existing refund notification from "Refund Initiated" to "Transport Refund Successful"
+ * when refund is confirmed from payment gateway.
+ */
+const updateRefundSuccessNotification = async (transport) => {
+  try {
+    if (!transport || !transport._id) return;
+    const Notification = require('../models/Notification');
+
+    const farmerId = transport.farmer?._id || transport.farmer;
+    if (!farmerId) return;
+
+    const cropName = transport.cropName || (transport.cropLot && transport.cropLot.cropName) || 'Wheat4';
+    const quantity = transport.quantity || 50;
+    const refundAmount = transport.refundAmount || transport.paidAmount || transport.totalCost || 840;
+    const actionWord = (transport.status === 'CANCELLED' || String(transport.cancellationReason || '').trim())
+      ? 'cancelled'
+      : 'rejected';
+
+    const title = 'Transport Refund Successful';
+    const message = `Your transport booking for ${cropName} (${quantity} qtl) has been ${actionWord}. Your refund of ₹${refundAmount} has been successfully credited to your original payment method.`;
+
+    const existingNotifs = await Notification.find({
+      recipient: farmerId,
+      type: 'TRANSPORT_REFUND',
+      relatedTransport: transport._id,
+    });
+
+    if (existingNotifs && existingNotifs.length > 0) {
+      await Notification.updateMany(
+        {
+          recipient: farmerId,
+          type: 'TRANSPORT_REFUND',
+          relatedTransport: transport._id,
+        },
+        {
+          $set: {
+            title,
+            message,
+          },
+        }
+      );
+    } else {
+      await Notification.create({
+        recipient: farmerId,
+        sender: transport.transporter?.user || transport.transporter || farmerId,
+        type: 'TRANSPORT_REFUND',
+        title,
+        message,
+        link: `/payment-status?transportId=${transport._id}`,
+        relatedTransport: transport._id,
+      });
+    }
+  } catch (err) {
+    console.error('Failed to update refund success notification:', err.message);
+  }
+};
+
 const initiateRefund = async (transport, reason = 'Transport booking cancelled / rejected') => {
   if (!transport) throw new Error('Transport booking record is required');
 
@@ -80,8 +138,9 @@ const checkRefundStatus = async (transport) => {
     }
   }
 
-  // If already successful, return current record
+  // If already successful, ensure notification is updated and return current record
   if (transport.refundStatus === 'REFUND_SUCCESSFUL' || transport.refundStatus === 'REFUNDED') {
+    await updateRefundSuccessNotification(transport);
     return {
       status: 'REFUND_SUCCESSFUL',
       paymentGatewayStatus: transport.paymentGatewayStatus || 'REFUND_SUCCESSFUL',
@@ -140,6 +199,9 @@ const checkRefundStatus = async (transport) => {
 
   if (hasChanged) {
     await transport.save();
+    if (transport.refundStatus === 'REFUND_SUCCESSFUL' || transport.paymentStatus === 'REFUNDED') {
+      await updateRefundSuccessNotification(transport);
+    }
   }
 
   return {
@@ -205,6 +267,9 @@ const setGatewayRefundStatus = async (transport, { status, failureReason, gatewa
   }
 
   await transport.save();
+  if (normalizedStatus === 'REFUND_SUCCESSFUL' || normalizedStatus === 'REFUNDED') {
+    await updateRefundSuccessNotification(transport);
+  }
   return transport;
 };
 
@@ -212,4 +277,5 @@ module.exports = {
   initiateRefund,
   checkRefundStatus,
   setGatewayRefundStatus,
+  updateRefundSuccessNotification,
 };

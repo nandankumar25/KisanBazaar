@@ -234,12 +234,20 @@ const updateTransportStatus = async (req, res, next) => {
                 });
 
                 if (!existingRefundNotif) {
+                  const currentDoc = await Transport.findById(refundBookingId);
+                  const isSuccess = currentDoc && (currentDoc.refundStatus === 'REFUND_SUCCESSFUL' || currentDoc.refundStatus === 'REFUNDED');
+
+                  const notifTitle = isSuccess ? 'Transport Refund Successful' : 'Transport Refund Initiated';
+                  const notifMessage = isSuccess
+                    ? `Your transport booking for ${refundCrop} (${refundQty} qtl) has been rejected. Your refund of ₹${refundAmt} has been successfully credited to your original payment method.`
+                    : `Your transport booking for ${refundCrop} (${refundQty} qtl) has been rejected. Your online payment refund of ₹${refundAmt} has been initiated.`;
+
                   await Notification.create({
                     recipient: farmerUserId,
                     sender: senderUserId,
                     type: 'TRANSPORT_REFUND',
-                    title: 'Transport Refund Initiated',
-                    message: `Your transport booking for ${refundCrop} (${refundQty} qtl) has been rejected. Your online payment refund of ₹${refundAmt} has been initiated.`,
+                    title: notifTitle,
+                    message: notifMessage,
                     link: `/payment-status?transportId=${refundBookingId}`,
                     relatedTransport: refundBookingId,
                   });
@@ -547,12 +555,20 @@ const cancelTransport = async (req, res, next) => {
             });
 
             if (!existingRefundNotif) {
+              const currentDoc = await Transport.findById(refundBookingId);
+              const isSuccess = currentDoc && (currentDoc.refundStatus === 'REFUND_SUCCESSFUL' || currentDoc.refundStatus === 'REFUNDED');
+
+              const notifTitle = isSuccess ? 'Transport Refund Successful' : 'Transport Refund Initiated';
+              const notifMessage = isSuccess
+                ? `Your transport booking for ${refundCrop} (${refundQty} qtl) has been cancelled. Your refund of ₹${refundAmt} has been successfully credited to your original payment method.`
+                : `Your transport booking for ${refundCrop} (${refundQty} qtl) has been cancelled. Your online payment refund of ₹${refundAmt} has been initiated.`;
+
               await Notification.create({
                 recipient: farmerId,
                 sender: farmerId,
                 type: 'TRANSPORT_REFUND',
-                title: 'Transport Refund Initiated',
-                message: `Your transport booking for ${refundCrop} (${refundQty} qtl) has been cancelled. Your online payment refund of ₹${refundAmt} has been initiated.`,
+                title: notifTitle,
+                message: notifMessage,
                 link: `/payment-status?transportId=${refundBookingId}`,
                 relatedTransport: refundBookingId,
               });
