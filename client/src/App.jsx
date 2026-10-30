@@ -104,6 +104,22 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="payments"
+              element={
+                <ProtectedRoute>
+                  <PaymentStatus />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="payments/:id"
+              element={
+                <ProtectedRoute>
+                  <PaymentStatus />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Farmer Routes (Protected: FARMER, ADMIN) */}
             <Route

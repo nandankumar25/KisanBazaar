@@ -243,7 +243,7 @@ const FarmerDashboard = () => {
         <h2 className="text-xl font-bold text-slate-900 flex items-center space-x-2">
           <span>Quick Actions</span>
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
           
           <Link
             to="/mandi-prices"
@@ -320,7 +320,20 @@ const FarmerDashboard = () => {
             <span className="font-bold text-sm text-slate-900 group-hover:text-emerald-700">
               Transactions
             </span>
-            <span className="text-[11px] text-emerald-600 font-semibold mt-1">Track Payments →</span>
+            <span className="text-[11px] text-emerald-600 font-semibold mt-1">Crop Deals →</span>
+          </Link>
+
+          <Link
+            to="/payments"
+            className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm hover:shadow-md hover:border-emerald-400 transition-all text-center flex flex-col items-center group"
+          >
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <CreditCard className="w-6 h-6" />
+            </div>
+            <span className="font-bold text-sm text-slate-900 group-hover:text-emerald-700">
+              Payments
+            </span>
+            <span className="text-[11px] text-emerald-600 font-semibold mt-1">Track Refunds →</span>
           </Link>
 
         </div>

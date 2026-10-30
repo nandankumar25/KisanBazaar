@@ -11,6 +11,7 @@ import {
   Truck,
   Calculator,
   Receipt,
+  CreditCard,
   Shield,
   LogOut,
   User,
@@ -283,7 +284,7 @@ const Navbar = () => {
                   </Link>
                 )}
 
-                {/* Farmer specific: My Crops & Offers */}
+                {/* Farmer specific: My Crops, Offers, & Payments */}
                 {(user?.role === 'FARMER' || user?.role === 'ADMIN') && (
                   <>
                     <Link to="/my-crops" className={navLinkClass('/my-crops')}>
@@ -292,6 +293,17 @@ const Navbar = () => {
                     </Link>
                     <Link to="/offers" className={navLinkClass('/offers')}>
                       <span>Offers</span>
+                    </Link>
+                    <Link
+                      to="/payments"
+                      className={`px-2.5 py-1.5 rounded-lg font-medium flex items-center space-x-1.5 transition text-xs xl:text-sm whitespace-nowrap ${
+                        isActive('/payments') || isActive('/payment-status')
+                          ? 'text-emerald-700 font-bold bg-emerald-50'
+                          : 'text-slate-600 hover:text-emerald-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4 text-emerald-600" />
+                      <span>Payments</span>
                     </Link>
                   </>
                 )}
@@ -440,18 +452,33 @@ const Navbar = () => {
                         </Link>
 
                         {user?.role === 'FARMER' && (
-                          <Link
-                            to="/dashboard"
-                            onClick={() => setUserMenuOpen(false)}
-                            className={`flex items-center space-x-2.5 px-4 py-2.5 text-xs font-semibold transition ${
-                              isActive('/dashboard')
-                                ? 'bg-emerald-50 text-emerald-800'
-                                : 'text-slate-700 hover:bg-slate-50 hover:text-emerald-700'
-                            }`}
-                          >
-                            <LayoutDashboard className="w-4 h-4 text-emerald-600" />
-                            <span>Farmer Dashboard</span>
-                          </Link>
+                          <>
+                            <Link
+                              to="/dashboard"
+                              onClick={() => setUserMenuOpen(false)}
+                              className={`flex items-center space-x-2.5 px-4 py-2.5 text-xs font-semibold transition ${
+                                isActive('/dashboard')
+                                  ? 'bg-emerald-50 text-emerald-800'
+                                  : 'text-slate-700 hover:bg-slate-50 hover:text-emerald-700'
+                              }`}
+                            >
+                              <LayoutDashboard className="w-4 h-4 text-emerald-600" />
+                              <span>Farmer Dashboard</span>
+                            </Link>
+
+                            <Link
+                              to="/payments"
+                              onClick={() => setUserMenuOpen(false)}
+                              className={`flex items-center space-x-2.5 px-4 py-2.5 text-xs font-semibold transition ${
+                                isActive('/payments') || isActive('/payment-status')
+                                  ? 'bg-emerald-50 text-emerald-800'
+                                  : 'text-slate-700 hover:bg-slate-50 hover:text-emerald-700'
+                              }`}
+                            >
+                              <CreditCard className="w-4 h-4 text-emerald-600" />
+                              <span>Payments & Refunds</span>
+                            </Link>
+                          </>
                         )}
 
                         {user?.role === 'BUYER' && (
@@ -724,7 +751,7 @@ const Navbar = () => {
                 </Link>
               )}
 
-              {/* Farmer Links: My Crops & Offers */}
+              {/* Farmer Links: My Crops, Offers, & Payments */}
               {(user?.role === 'FARMER' || user?.role === 'ADMIN') && (
                 <>
                   <Link
@@ -740,6 +767,14 @@ const Navbar = () => {
                     className={mobileNavLinkClass('/offers')}
                   >
                     Offers
+                  </Link>
+                  <Link
+                    to="/payments"
+                    onClick={() => setIsOpen(false)}
+                    className={`${mobileNavLinkClass('/payments')} flex items-center space-x-2`}
+                  >
+                    <CreditCard className="w-4 h-4 text-emerald-600" />
+                    <span>Payments & Refunds</span>
                   </Link>
                 </>
               )}
