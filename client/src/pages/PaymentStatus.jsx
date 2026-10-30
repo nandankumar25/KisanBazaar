@@ -560,11 +560,18 @@ const PaymentStatus = () => {
                 </div>
               </div>
 
-              {/* Segmented Timeline Flow with Separate Connecting Lines */}
-              <div className="space-y-0">
+              {/* Continuous Timeline Flow with Vertical Green Connecting Line */}
+              <div className="relative">
                 {/* Stage 1: Refund Initiated */}
-                <div className="flex items-start gap-4">
-                  <div className="flex flex-col items-center">
+                <div className="relative flex items-start gap-4 pb-8">
+                  {/* Continuous Vertical Green Line (Stage 1 Circle Center to Bottom of Stage 1) */}
+                  <div
+                    className={`absolute left-[18px] top-[18px] bottom-0 w-0.5 -translate-x-1/2 z-0 transition-colors duration-500 ${
+                      isTimelineStarted && (line1Green || stage1Confirmed) ? 'bg-emerald-600' : 'bg-slate-200'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div className="relative z-10 flex-shrink-0">
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${
                         stage1Confirmed
@@ -615,18 +622,16 @@ const PaymentStatus = () => {
                   </div>
                 </div>
 
-                {/* Connecting Line 1 (Stage 1 to Stage 2) - Turns GREEN when Stage 1 is confirmed! */}
-                <div className="pl-[17px] py-1">
-                  <div
-                    className={`w-0.5 h-10 transition-colors duration-700 ${
-                      line1Green || stage1Confirmed ? 'bg-emerald-600 ring-1 ring-emerald-300' : 'bg-slate-200'
-                    }`}
-                  />
-                </div>
-
                 {/* Stage 2: Refund Processing */}
-                <div className="flex items-start gap-4">
-                  <div className="flex flex-col items-center">
+                <div className="relative flex items-start gap-4 pb-8">
+                  {/* Continuous Vertical Green Line (Top of Stage 2 through Circle Center to Bottom of Stage 2) */}
+                  <div
+                    className={`absolute left-[18px] top-0 bottom-0 w-0.5 -translate-x-1/2 z-0 transition-colors duration-500 ${
+                      isTimelineStarted && (line1Green || stage1Confirmed) ? 'bg-emerald-600' : 'bg-slate-200'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div className="relative z-10 flex-shrink-0">
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${
                         stage2Confirmed
@@ -697,22 +702,16 @@ const PaymentStatus = () => {
                   </div>
                 </div>
 
-                {/* Connecting Line 2 (Stage 2 to Stage 3) - Turns GREEN when Stage 2 is confirmed! */}
-                <div className="pl-[17px] py-1">
-                  <div
-                    className={`w-0.5 h-10 transition-colors duration-700 ${
-                      line2Green || stage2Confirmed
-                        ? 'bg-emerald-600 ring-1 ring-emerald-300'
-                        : isFailed
-                        ? 'bg-rose-500'
-                        : 'bg-slate-200'
-                    }`}
-                  />
-                </div>
-
                 {/* Stage 3: Refund Successful OR Refund Failed */}
-                <div className="flex items-start gap-4">
-                  <div className="flex flex-col items-center">
+                <div className="relative flex items-start gap-4">
+                  {/* Continuous Vertical Green Line (Top of Stage 3 to Center of Stage 3 Circle) */}
+                  <div
+                    className={`absolute left-[18px] top-0 h-[18px] w-0.5 -translate-x-1/2 z-0 transition-colors duration-500 ${
+                      isTimelineStarted && (line1Green || stage1Confirmed) ? 'bg-emerald-600' : 'bg-slate-200'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div className="relative z-10 flex-shrink-0">
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${
                         stage3Confirmed
