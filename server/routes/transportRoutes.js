@@ -7,6 +7,8 @@ const {
   updateTransportStatus,
   updateTransportPayment,
   cancelTransport,
+  getTransportPaymentStatus,
+  updateGatewayRefundStatus,
 } = require('../controllers/transportController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -15,6 +17,8 @@ router.route('/')
   .post(createTransport);
 
 router.get('/:id', getTransportById);
+router.get('/:id/payment-status', getTransportPaymentStatus);
+router.post('/:id/gateway-status', updateGatewayRefundStatus);
 router.put('/:id/status', updateTransportStatus);
 router.put('/:id/payment', updateTransportPayment);
 router.put('/:id/cancel', protect, cancelTransport);

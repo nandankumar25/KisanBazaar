@@ -2,6 +2,7 @@ const Transport = require('../models/Transport');
 const Transporter = require('../models/Transporter');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const paymentGatewayService = require('../services/paymentGatewayService');
 
 // @desc    Create a transport booking record
 // @route   POST /api/transports
@@ -177,21 +178,12 @@ const updateTransportStatus = async (req, res, next) => {
           transport.paymentStatus === 'PAID' &&
           (Number(transport.paidAmount) > 0 || Number(transport.totalCost) > 0);
 
-        // Idempotency: only process refund once
-        if (isOnlinePaid && transport.refundStatus !== 'REFUNDED') {
-          const refundAmount = Number(transport.paidAmount) || Number(transport.totalCost);
-          const refundTxId = `REF-${Date.now().toString().slice(-8)}`;
+        const isAlreadyRefunding = ['REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_PROCESSING', 'REFUND_INITIATED'].includes(transport.refundStatus);
 
-          transport.refundStatus = 'REFUNDED';
-          transport.refundAmount = refundAmount;
-          transport.refundTransactionId = refundTxId;
-          transport.refundInitiatedAt = new Date();
-          transport.refundCompletedAt = new Date();
-          transport.refundReason = rejectionReason || 'Transporter rejected booking';
-          transport.paymentStatus = 'REFUNDED';
-          transport.paymentGatewayStatus = 'REFUNDED';
-          await transport.save();
-        } else if (!isOnlinePaid && transport.refundStatus !== 'REFUNDED') {
+        // Idempotency: initiate refund with payment gateway once
+        if (isOnlinePaid && !isAlreadyRefunding) {
+          await paymentGatewayService.initiateRefund(transport, rejectionReason || 'Transporter rejected booking');
+        } else if (!isOnlinePaid && !isAlreadyRefunding) {
           transport.refundStatus = 'NOT_APPLICABLE';
           transport.refundAmount = 0;
           await transport.save();
@@ -207,7 +199,8 @@ const updateTransportStatus = async (req, res, next) => {
           const reason = transport.rejectionReason || 'Transporter vehicle unavailable';
           let rejectMsg = `Your transport booking for ${cropName} (${quantity} qtl) has been rejected by the transporter (${transporterName}). Reason: ${reason}.`;
 
-          if (transport.refundStatus === 'REFUNDED') {
+          const hasRefund = ['REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_PROCESSING', 'REFUND_INITIATED'].includes(transport.refundStatus);
+          if (hasRefund) {
             rejectMsg = `Your transport booking for ${cropName} (${quantity} qtl) has been rejected by the transporter. A refund of ₹${transport.refundAmount} has been initiated for your online payment. Refund Reference: ${transport.refundTransactionId}. Reason: ${reason}.`;
           } else {
             rejectMsg += ` As payment was Cash on Delivery (COD), no online refund is required. Please book another transporter.`;
@@ -219,12 +212,12 @@ const updateTransportStatus = async (req, res, next) => {
             type: 'TRANSPORT_UPDATE',
             title: `Transport Booking Rejected - #${bookingId.slice(-6).toUpperCase()}`,
             message: rejectMsg,
-            link: `/transport?crop=${encodeURIComponent(cropName)}&quantity=${quantity}&destination=${encodeURIComponent(transport.destination || '')}&mandiBookingId=${transport.mandiBooking?._id || transport.mandiBooking || ''}`,
+            link: hasRefund ? `/payment-status?transportId=${transport._id}` : `/transport?crop=${encodeURIComponent(cropName)}&quantity=${quantity}&destination=${encodeURIComponent(transport.destination || '')}&mandiBookingId=${transport.mandiBooking?._id || transport.mandiBooking || ''}`,
             relatedTransport: transport._id,
           });
 
           // Delayed Refund Notification: sent after exactly 20 seconds for online paid bookings
-          if (isOnlinePaid && transport.refundStatus === 'REFUNDED') {
+          if (isOnlinePaid) {
             const refundBookingId = transport._id;
             const senderUserId = req.user?._id;
             const refundCrop = cropName;
@@ -247,7 +240,7 @@ const updateTransportStatus = async (req, res, next) => {
                     type: 'TRANSPORT_REFUND',
                     title: 'Transport Refund Initiated',
                     message: `Your transport booking for ${refundCrop} (${refundQty} qtl) has been rejected. Your online payment refund of ₹${refundAmt} has been initiated.`,
-                    link: '/dashboard',
+                    link: `/payment-status?transportId=${refundBookingId}`,
                     relatedTransport: refundBookingId,
                   });
                 }
@@ -448,7 +441,7 @@ const cancelTransport = async (req, res, next) => {
       transport.cancellationReason = (req.body.cancellationReason || req.body.reason).trim();
     }
 
-    // 5. Automatic Refund calculation
+    // 5. Automatic Refund calculation with Payment Gateway
     const isCod =
       String(transport.paymentMethod || '').includes('Cash') ||
       String(transport.paymentMethod || '').includes('COD');
@@ -458,24 +451,15 @@ const cancelTransport = async (req, res, next) => {
       transport.paymentStatus === 'PAID' &&
       (Number(transport.paidAmount) > 0 || Number(transport.totalCost) > 0);
 
-    if (isOnlinePaid && transport.refundStatus !== 'REFUNDED') {
-      const refundAmount = Number(transport.paidAmount) || Number(transport.totalCost);
-      const refundTxId = `REF-${Date.now().toString().slice(-8)}`;
+    const isAlreadyRefunding = ['REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_PROCESSING', 'REFUND_INITIATED'].includes(transport.refundStatus);
 
-      transport.refundStatus = 'REFUNDED';
-      transport.refundAmount = refundAmount;
-      transport.refundTransactionId = refundTxId;
-      transport.refundInitiatedAt = new Date();
-      transport.refundCompletedAt = new Date();
-      transport.refundReason = transport.cancellationReason || 'Farmer cancelled transport booking';
-      transport.paymentStatus = 'REFUNDED';
-      transport.paymentGatewayStatus = 'REFUNDED';
-    } else {
+    if (isOnlinePaid && !isAlreadyRefunding) {
+      await paymentGatewayService.initiateRefund(transport, transport.cancellationReason || 'Farmer cancelled transport booking');
+    } else if (!isOnlinePaid && !isAlreadyRefunding) {
       transport.refundStatus = 'NOT_APPLICABLE';
       transport.refundAmount = 0;
+      await transport.save();
     }
-
-    await transport.save();
 
     const bookingId = transport._id.toString();
     const farmerName = transport.farmer?.name || 'Farmer';
@@ -483,7 +467,7 @@ const cancelTransport = async (req, res, next) => {
     const quantity = transport.quantity || 0;
     const reasonText = transport.cancellationReason || 'Farmer cancelled booking';
 
-    // 6. Notify Transporter about cancellation
+    // 6. Notify Transporter about cancellation immediately
     try {
       let recipientTransporterUserId = null;
       if (transport.transporter?.user) {
@@ -508,28 +492,52 @@ const cancelTransport = async (req, res, next) => {
       console.error('Failed to notify transporter of cancellation:', notifErr.message);
     }
 
-    // 7. Notify Farmer about cancellation & refund
+    // 7. Notify Farmer: First send cancellation notification immediately (t = 0s)
     try {
-      if (transport.refundStatus === 'REFUNDED') {
-        await Notification.create({
-          recipient: req.user._id,
-          sender: req.user._id,
-          type: 'TRANSPORT_REFUND',
-          title: `Transport Cancelled & Refund Processed - #${bookingId.slice(-6).toUpperCase()}`,
-          message: `Your transport booking for ${cropName} (${quantity} qtl) has been cancelled. A refund of ₹${transport.refundAmount} has been processed to your original payment method (${transport.paymentMethod}). Refund ID: ${transport.refundTransactionId}.`,
-          link: '/dashboard',
-          relatedTransport: transport._id,
-        });
-      } else {
-        await Notification.create({
-          recipient: req.user._id,
-          sender: req.user._id,
-          type: 'TRANSPORT_CANCELLED',
-          title: `Transport Booking Cancelled - #${bookingId.slice(-6).toUpperCase()}`,
-          message: `Your transport booking for ${cropName} (${quantity} qtl) has been cancelled successfully. Payment method was ${transport.paymentMethod || 'COD'}, so no refund is applicable.`,
-          link: '/dashboard',
-          relatedTransport: transport._id,
-        });
+      await Notification.create({
+        recipient: req.user._id,
+        sender: req.user._id,
+        type: 'TRANSPORT_CANCELLED',
+        title: `Transport Booking Cancelled - #${bookingId.slice(-6).toUpperCase()}`,
+        message: isOnlinePaid
+          ? `Your transport booking for ${cropName} (${quantity} qtl) has been cancelled.`
+          : `Your transport booking for ${cropName} (${quantity} qtl) has been cancelled successfully. Payment method was ${transport.paymentMethod || 'COD'}, so no refund is applicable.`,
+        link: isOnlinePaid ? `/payment-status?transportId=${transport._id}` : '/dashboard',
+        relatedTransport: transport._id,
+      });
+
+      // 8. 20 seconds later: Automatically send refund notification to farmer for online paid bookings
+      if (isOnlinePaid) {
+        const refundBookingId = transport._id;
+        const farmerId = req.user._id;
+        const refundCrop = cropName;
+        const refundQty = quantity;
+        const refundAmt = transport.refundAmount;
+
+        setTimeout(async () => {
+          try {
+            // Prevent duplicate refund notifications
+            const existingRefundNotif = await Notification.findOne({
+              recipient: farmerId,
+              type: 'TRANSPORT_REFUND',
+              relatedTransport: refundBookingId,
+            });
+
+            if (!existingRefundNotif) {
+              await Notification.create({
+                recipient: farmerId,
+                sender: farmerId,
+                type: 'TRANSPORT_REFUND',
+                title: 'Transport Refund Initiated',
+                message: `Your transport booking for ${refundCrop} (${refundQty} qtl) has been cancelled. Your online payment refund of ₹${refundAmt} has been initiated.`,
+                link: `/payment-status?transportId=${refundBookingId}`,
+                relatedTransport: refundBookingId,
+              });
+            }
+          } catch (delayErr) {
+            console.error('Failed to send delayed refund notification on cancellation:', delayErr.message);
+          }
+        }, 20000);
       }
     } catch (notifErr) {
       console.error('Failed to notify farmer of cancellation:', notifErr.message);
@@ -545,6 +553,107 @@ const cancelTransport = async (req, res, next) => {
   }
 };
 
+// @desc    Get live payment & refund status with real payment gateway verification
+// @route   GET /api/transports/:id/payment-status
+// @access  Public
+const getTransportPaymentStatus = async (req, res, next) => {
+  try {
+    const transport = await Transport.findById(req.params.id)
+      .populate('farmer', 'name email phone location')
+      .populate('transporter', 'name phone vehicleType vehicleNumber rating completedTrips user')
+      .populate('cropLot', 'cropName variety quantity netWeight availableQuantity pricePerQuintal images')
+      .populate('mandiBooking');
+
+    if (!transport) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transport booking record not found',
+      });
+    }
+
+    // Query and sync status with actual payment gateway response
+    const gatewayStatusResult = await paymentGatewayService.checkRefundStatus(transport);
+
+    const isCod =
+      String(transport.paymentMethod || '').includes('Cash') ||
+      String(transport.paymentMethod || '').includes('COD');
+
+    const refundState = transport.refundStatus;
+    const isFailed = refundState === 'REFUND_FAILED';
+    const isInitiated = ['REFUND_INITIATED', 'REFUND_PROCESSING', 'REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_FAILED'].includes(refundState);
+    const isProcessing = ['REFUND_PROCESSING', 'REFUNDED', 'REFUND_SUCCESSFUL'].includes(refundState);
+    const isSuccess = ['REFUNDED', 'REFUND_SUCCESSFUL'].includes(refundState);
+
+    const timeline = [
+      {
+        id: 'INITIATED',
+        title: 'Refund Initiated',
+        status: isInitiated ? 'COMPLETED' : 'PENDING',
+        timestamp: transport.refundInitiatedAt || null,
+        description: 'Refund request registered with payment gateway banking switch.',
+      },
+      {
+        id: 'PROCESSING',
+        title: 'Refund Processing',
+        status: isProcessing ? (isSuccess ? 'COMPLETED' : 'IN_PROGRESS') : (isFailed ? 'FAILED' : (isInitiated ? 'IN_PROGRESS' : 'PENDING')),
+        timestamp: transport.refundInitiatedAt || null,
+        description: isFailed
+          ? 'Gateway encountered an issue during bank settlement processing.'
+          : 'Payment gateway is communicating with beneficiary bank clearing network.',
+      },
+      {
+        id: isFailed ? 'FAILED' : 'SUCCESSFUL',
+        title: isFailed ? 'Refund Failed' : 'Refund Successful',
+        status: isSuccess ? 'COMPLETED' : (isFailed ? 'FAILED' : 'PENDING'),
+        timestamp: transport.refundCompletedAt || null,
+        description: isFailed
+          ? (transport.refundReason || 'Gateway failed to credit source account: Issuer bank technical decline.')
+          : `Amount of ₹${transport.refundAmount || transport.paidAmount} successfully credited back to original payment method.`,
+      },
+    ];
+
+    res.status(200).json({
+      success: true,
+      data: transport,
+      gatewayResponse: gatewayStatusResult?.gatewayResponse || transport.gatewayResponse,
+      timeline,
+      isCod,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update gateway refund status (for test verification / gateway webhooks)
+// @route   POST /api/transports/:id/gateway-status
+// @access  Public
+const updateGatewayRefundStatus = async (req, res, next) => {
+  try {
+    const transport = await Transport.findById(req.params.id);
+    if (!transport) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transport booking record not found',
+      });
+    }
+
+    const { status, failureReason, gatewayMessage } = req.body;
+    await paymentGatewayService.setGatewayRefundStatus(transport, {
+      status,
+      failureReason,
+      gatewayMessage,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Payment gateway response set to ${transport.refundStatus}`,
+      data: transport,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createTransport,
   getTransports,
@@ -552,4 +661,6 @@ module.exports = {
   updateTransportStatus,
   updateTransportPayment,
   cancelTransport,
+  getTransportPaymentStatus,
+  updateGatewayRefundStatus,
 };

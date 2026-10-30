@@ -481,14 +481,34 @@ const FarmerDashboard = () => {
                         return (
                           <div className="flex flex-col items-end gap-1.5">
                             {tStatus === 'REJECTED' && (
-                              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                                Prev: Rejected {latestTransport.refundStatus === 'REFUNDED' ? `(Refunded ₹${latestTransport.refundAmount})` : ''}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                  Prev: Rejected {['REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_PROCESSING', 'REFUND_INITIATED'].includes(latestTransport.refundStatus) ? `(Refund: ₹${latestTransport.refundAmount})` : ''}
+                                </span>
+                                {latestTransport.refundStatus && latestTransport.refundStatus !== 'NOT_APPLICABLE' && (
+                                  <Link
+                                    to={`/payment-status?transportId=${latestTransport._id}`}
+                                    className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition"
+                                  >
+                                    Payment Status
+                                  </Link>
+                                )}
+                              </div>
                             )}
                             {tStatus === 'CANCELLED' && (
-                              <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                                Prev: Cancelled {latestTransport.refundStatus === 'REFUNDED' ? `(Refunded ₹${latestTransport.refundAmount})` : ''}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                                  Prev: Cancelled {['REFUNDED', 'REFUND_SUCCESSFUL', 'REFUND_PROCESSING', 'REFUND_INITIATED'].includes(latestTransport.refundStatus) ? `(Refund: ₹${latestTransport.refundAmount})` : ''}
+                                </span>
+                                {latestTransport.refundStatus && latestTransport.refundStatus !== 'NOT_APPLICABLE' && (
+                                  <Link
+                                    to={`/payment-status?transportId=${latestTransport._id}`}
+                                    className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition"
+                                  >
+                                    Payment Status
+                                  </Link>
+                                )}
+                              </div>
                             )}
                             <Link
                               to={`/transport?destination=${encodeURIComponent(b.mandi?.name || 'Mandi Yard')}&crop=${encodeURIComponent(b.cropName)}&distance=35&quantity=${b.actualQuantity || b.estimatedQuantity || ''}&mandiBookingId=${b._id}&cropLot=${b.cropLot?._id || b.cropLot || ''}`}
@@ -875,6 +895,18 @@ const FarmerDashboard = () => {
               {detailsModalBooking.cancellationReason && (
                 <div className="pt-2 border-t border-slate-200 text-slate-700 text-[11px]">
                   <strong>Cancellation Reason:</strong> {detailsModalBooking.cancellationReason}
+                </div>
+              )}
+
+              {detailsModalBooking.refundStatus && detailsModalBooking.refundStatus !== 'NOT_APPLICABLE' && (
+                <div className="pt-2">
+                  <Link
+                    to={`/payment-status?transportId=${detailsModalBooking._id}`}
+                    onClick={() => setDetailsModalBooking(null)}
+                    className="w-full block text-center py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                  >
+                    View Live Payment & Refund Tracking
+                  </Link>
                 </div>
               )}
             </div>

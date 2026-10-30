@@ -329,6 +329,21 @@ export const cancelTransportBooking = async (id, data = {}) => {
   return response.data;
 };
 
+export const getTransportById = async (id) => {
+  const response = await api.get(`/transports/${id}`);
+  return response.data;
+};
+
+export const getTransportPaymentStatus = async (id) => {
+  const response = await api.get(`/transports/${id}/payment-status`);
+  return response.data;
+};
+
+export const updateGatewayRefundStatus = async (id, data) => {
+  const response = await api.post(`/transports/${id}/gateway-status`, data);
+  return response.data;
+};
+
 // Buyer API Services
 export const getBuyers = async (params = {}) => {
   const response = await api.get('/buyers', { params });

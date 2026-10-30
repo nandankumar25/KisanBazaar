@@ -107,7 +107,15 @@ const transportSchema = new mongoose.Schema(
     refundStatus: {
       type: String,
       enum: {
-        values: ['NOT_APPLICABLE', 'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED'],
+        values: [
+          'NOT_APPLICABLE',
+          'REFUND_PENDING',
+          'REFUND_INITIATED',
+          'REFUND_PROCESSING',
+          'REFUNDED',
+          'REFUND_SUCCESSFUL',
+          'REFUND_FAILED',
+        ],
         message: '{VALUE} is not a valid refund status',
       },
       default: 'NOT_APPLICABLE',
@@ -121,6 +129,15 @@ const transportSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
+    },
+    gatewayRefundId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    gatewayResponse: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     refundInitiatedAt: {
       type: Date,

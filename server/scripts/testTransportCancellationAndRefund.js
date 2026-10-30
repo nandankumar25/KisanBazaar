@@ -189,7 +189,10 @@ async function runTransportCancellationTests() {
 
     const rejectedBooking = await Transport.findById(booking1._id);
     assert(rejectedBooking.status === 'REJECTED', 'Transport status is REJECTED');
-    assert(rejectedBooking.refundStatus === 'REFUNDED', 'Automatic refund status is REFUNDED');
+    assert(
+      ['REFUND_INITIATED', 'REFUND_PROCESSING', 'REFUND_SUCCESSFUL', 'REFUNDED'].includes(rejectedBooking.refundStatus),
+      'Automatic refund initiated with payment gateway'
+    );
     assert(rejectedBooking.refundAmount === 840, 'Refunded exact amount paid (₹840)');
     assert(rejectedBooking.refundTransactionId.startsWith('REF-'), 'Valid refundTransactionId generated');
     assert(rejectedBooking.paymentStatus === 'REFUNDED', 'Payment status updated to REFUNDED');
@@ -329,8 +332,49 @@ async function runTransportCancellationTests() {
     assert(cancelledBooking.status === 'CANCELLED', 'Transport status is CANCELLED');
     assert(cancelledBooking.cancellationReason.includes('farm gate'), 'Cancellation reason recorded');
     assert(cancelledBooking.cancelledAt !== null, 'Cancellation timestamp recorded');
-    assert(cancelledBooking.refundStatus === 'REFUNDED', 'Online payment automatically refunded upon cancellation');
+    assert(
+      ['REFUND_INITIATED', 'REFUND_PROCESSING', 'REFUND_SUCCESSFUL', 'REFUNDED'].includes(cancelledBooking.refundStatus),
+      'Online payment automatically registered for refund upon cancellation'
+    );
     assert(cancelledBooking.refundAmount === 840, 'Refunded full paid amount of ₹840');
+
+    // Check Farmer immediately received cancellation notification (t = 0s)
+    const farmerCancelNotifsRes = await fetch(`${baseUrl}/notifications`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const farmerCancelNotifsData = await farmerCancelNotifsRes.json();
+    const farmerCancelNotif = farmerCancelNotifsData.data?.find(
+      (n) => n.relatedTransport?.toString() === booking3._id.toString() && n.type === 'TRANSPORT_CANCELLED'
+    );
+    assert(farmerCancelNotif && farmerCancelNotif.title.includes('Cancelled'), 'Farmer received immediate cancellation notification at 0s');
+
+    // Verify refund notification is NOT sent immediately for cancellation (waiting 20s)
+    const immediateCancelRefundNotif = farmerCancelNotifsData.data?.find(
+      (n) => n.relatedTransport?.toString() === booking3._id.toString() && n.type === 'TRANSPORT_REFUND'
+    );
+    assert(!immediateCancelRefundNotif, 'Farmer cancellation refund notification not yet sent at 0s');
+
+    console.log('Waiting 20.5s for cancellation delayed refund notification trigger...');
+    await new Promise((resolve) => setTimeout(resolve, 20500));
+
+    // Check Farmer received delayed refund notification after 20s
+    const farmerDelayedCancelNotifsRes = await fetch(`${baseUrl}/notifications`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const farmerDelayedCancelData = await farmerDelayedCancelNotifsRes.json();
+    const cancelRefundNotif = farmerDelayedCancelData.data?.find(
+      (n) => n.relatedTransport?.toString() === booking3._id.toString() && n.type === 'TRANSPORT_REFUND'
+    );
+    assert(
+      cancelRefundNotif && cancelRefundNotif.title === 'Transport Refund Initiated',
+      'Farmer received delayed cancellation refund notification with title "Transport Refund Initiated"'
+    );
+    assert(
+      cancelRefundNotif && cancelRefundNotif.message.includes('Wheat4') && cancelRefundNotif.message.includes('840'),
+      'Cancellation delayed refund notification text dynamically includes crop, quantity, and ₹840'
+    );
 
     // Check Transporter was notified about the cancellation
     const transporterNotifsRes = await fetch(`${baseUrl}/notifications`, {
@@ -377,6 +421,64 @@ async function runTransportCancellationTests() {
       body: JSON.stringify({ reason: 'Try cancel completed' }),
     });
     assert(invalidCancelRes.status === 400, 'Attempting to cancel COMPLETED transport correctly returns 400 Bad Request');
+
+    // ==============================================================
+    // Test 7: Payment Status Page Endpoint (GET /payment-status)
+    // ==============================================================
+    const paymentStatusRes = await fetch(`${baseUrl}/transports/${booking3._id}/payment-status`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const paymentStatusData = await paymentStatusRes.json();
+    assert(paymentStatusRes.ok && paymentStatusData.success, 'GET /payment-status returns 200 OK with success');
+    assert(paymentStatusData.data.cropName === 'Wheat4', 'Payment status returns accurate crop name');
+    assert(paymentStatusData.data.refundAmount === 840, 'Payment status returns accurate refund amount (₹840)');
+    assert(Array.isArray(paymentStatusData.timeline) && paymentStatusData.timeline.length === 3, 'Payment status contains 3-stage visual timeline');
+    assert(paymentStatusData.timeline[0].title === 'Refund Initiated', 'Stage 1 title is "Refund Initiated"');
+    assert(paymentStatusData.timeline[1].title === 'Refund Processing', 'Stage 2 title is "Refund Processing"');
+    assert(paymentStatusData.timeline[2].title === 'Refund Successful' || paymentStatusData.timeline[2].title === 'Refund Failed', 'Stage 3 title is "Refund Successful" or "Refund Failed"');
+
+    // ==============================================================
+    // Test 8: Payment Gateway Actual Status Sync (POST /gateway-status)
+    // Test that status updates according to actual gateway response,
+    // not arbitrary frontend timer!
+    // ==============================================================
+    const gatewayFailRes = await fetch(`${baseUrl}/transports/${booking3._id}/gateway-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'REFUND_FAILED',
+        failureReason: 'Beneficiary bank technical decline: Account validation failed',
+      }),
+    });
+    const gatewayFailData = await gatewayFailRes.json();
+    assert(gatewayFailRes.ok && gatewayFailData.success, 'Simulated gateway response update to REFUND_FAILED');
+
+    // Verify GET /payment-status reflects REFUND_FAILED with exact reason
+    const checkFailedRes = await fetch(`${baseUrl}/transports/${booking3._id}/payment-status`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const checkFailedData = await checkFailedRes.json();
+    assert(checkFailedData.data.refundStatus === 'REFUND_FAILED', 'Backend data updated to REFUND_FAILED based on gateway response');
+    assert(checkFailedData.timeline[2].title === 'Refund Failed', 'Timeline stage 3 dynamically updated to "Refund Failed"');
+    assert(checkFailedData.timeline[2].description.includes('technical decline'), 'Timeline stage 3 includes gateway failure reason');
+
+    // Simulate Gateway Success
+    const gatewaySuccessRes = await fetch(`${baseUrl}/transports/${booking3._id}/gateway-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'REFUND_SUCCESSFUL' }),
+    });
+    assert(gatewaySuccessRes.ok, 'Simulated gateway response update to REFUND_SUCCESSFUL');
+
+    const checkSuccessRes = await fetch(`${baseUrl}/transports/${booking3._id}/payment-status`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const checkSuccessData = await checkSuccessRes.json();
+    assert(checkSuccessData.data.refundStatus === 'REFUND_SUCCESSFUL', 'Backend data updated to REFUND_SUCCESSFUL');
+    assert(checkSuccessData.timeline[2].title === 'Refund Successful', 'Timeline stage 3 dynamically updated to "Refund Successful"');
 
     // Cleanup test records
     await Transport.deleteMany({ farmer: farmer._id });

@@ -35,6 +35,7 @@ import MandiDetails from './pages/MandiDetails';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Messages from './pages/Messages';
+import PaymentStatus from './pages/PaymentStatus';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -82,6 +83,24 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Messages />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Payment & Refund Status Tracking (Protected) */}
+            <Route
+              path="payment-status"
+              element={
+                <ProtectedRoute>
+                  <PaymentStatus />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="payment-status/:id"
+              element={
+                <ProtectedRoute>
+                  <PaymentStatus />
                 </ProtectedRoute>
               }
             />
