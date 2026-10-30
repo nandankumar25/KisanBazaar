@@ -6,7 +6,6 @@ import {
   TrendingUp, 
   Truck, 
   Users, 
-  Calculator, 
   ArrowRight,
   Info,
   Search,
@@ -243,7 +242,7 @@ const FarmerDashboard = () => {
         <h2 className="text-xl font-bold text-slate-900 flex items-center space-x-2">
           <span>Quick Actions</span>
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           
           <Link
             to="/mandi-prices"
@@ -295,19 +294,6 @@ const FarmerDashboard = () => {
               Find Transport
             </span>
             <span className="text-[11px] text-purple-600 font-semibold mt-1">Book Trucks →</span>
-          </Link>
-
-          <Link
-            to="/net-price"
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-teal-300 transition-all text-center flex flex-col items-center group"
-          >
-            <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Calculator className="w-6 h-6" />
-            </div>
-            <span className="font-bold text-sm text-slate-900 group-hover:text-teal-700">
-              Net Price Calculator
-            </span>
-            <span className="text-[11px] text-teal-600 font-semibold mt-1">Estimate Profit →</span>
           </Link>
 
           <Link

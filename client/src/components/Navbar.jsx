@@ -9,7 +9,6 @@ import {
   Sprout as SproutIcon,
   Users,
   Truck,
-  Calculator,
   Receipt,
   CreditCard,
   Shield,
@@ -329,11 +328,6 @@ const Navbar = () => {
                 )}
 
                 {/* Tools Links */}
-                <Link to="/net-price" className={navLinkClass('/net-price')}>
-                  <Calculator className="w-4 h-4" />
-                  <span>Net Price</span>
-                </Link>
-
                 <Link to="/transactions" className={navLinkClass('/transactions')}>
                   <Receipt className="w-4 h-4" />
                   <span>Deals</span>
@@ -811,14 +805,6 @@ const Navbar = () => {
               )}
 
               {/* Tools Links */}
-              <Link
-                to="/net-price"
-                onClick={() => setIsOpen(false)}
-                className={mobileNavLinkClass('/net-price')}
-              >
-                Net Price
-              </Link>
-
               <Link
                 to="/transactions"
                 onClick={() => setIsOpen(false)}

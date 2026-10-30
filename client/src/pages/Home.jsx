@@ -59,8 +59,8 @@ const Home = () => {
     },
     {
       icon: TrendingUp,
-      title: 'Realized Income Calculator',
-      description: 'Calculate net income after accounting for freight and handling costs.'
+      title: 'Guaranteed Fair Pricing',
+      description: 'Sell at fair market prices without hidden deductions or middleman commissions.'
     },
     {
       icon: Users,

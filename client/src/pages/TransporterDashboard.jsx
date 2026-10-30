@@ -21,7 +21,6 @@ import {
   Activity,
   Layers,
   ChevronRight,
-  Calculator,
   ShieldCheck,
   Banknote,
   Package,
@@ -645,7 +644,7 @@ const TransporterDashboard = () => {
       </div>
 
       {/* Quick Logistics Tools Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Link
           to="/my-vehicles"
           className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs hover:border-emerald-300 hover:shadow-md transition group block"
@@ -680,25 +679,6 @@ const TransporterDashboard = () => {
           </p>
           <div className="mt-4 text-xs font-bold text-teal-700 flex items-center gap-1">
             <span>Open Transport Finder</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
-          </div>
-        </Link>
-
-        <Link
-          to="/net-price"
-          className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs hover:border-emerald-300 hover:shadow-md transition group block"
-        >
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center mb-4 group-hover:scale-110 transition">
-            <Calculator className="w-5 h-5" />
-          </div>
-          <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-700 transition">
-            Net Price Calculator
-          </h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Calculate accurate net farmer realization by deducting transit and handling charges.
-          </p>
-          <div className="mt-4 text-xs font-bold text-blue-700 flex items-center gap-1">
-            <span>Calculate Freight Rates</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
           </div>
         </Link>

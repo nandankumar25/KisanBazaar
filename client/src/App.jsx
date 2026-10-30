@@ -24,7 +24,6 @@ import MyOffers from './pages/MyOffers';
 import FarmerOffers from './pages/FarmerOffers';
 import TransportFinder from './pages/TransportFinder';
 import TransportBooking from './pages/TransportBooking';
-import NetPriceCalculator from './pages/NetPriceCalculator';
 import Transactions from './pages/Transactions';
 import CreateTransaction from './pages/CreateTransaction';
 import TransactionDetails from './pages/TransactionDetails';
@@ -54,7 +53,6 @@ function App() {
             <Route path="crop-lot/:id" element={<CropLotDetails />} />
             <Route path="transport" element={<TransportFinder />} />
             <Route path="book-transport" element={<TransportBooking />} />
-            <Route path="net-price" element={<NetPriceCalculator />} />
             <Route path="transactions" element={<Transactions />} />
             <Route path="transaction/:id" element={<TransactionDetails />} />
             <Route path="mandi/:id" element={<MandiDetails />} />

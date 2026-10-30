@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   CheckCircle2,
   ArrowRight,
-  Calculator,
   Store,
   MapPin,
   HeartHandshake,
@@ -39,14 +38,6 @@ const About = () => {
         'Local commercial haulers list verified vehicle fleets with clear per-kilometer freight pricing for hassle-free transport.',
       badge: 'Logistics',
       color: 'bg-amber-50 text-amber-700 border-amber-200',
-    },
-    {
-      icon: Calculator,
-      title: 'Net Price Calculator',
-      description:
-        'Empowering producers to calculate real net earnings after factoring in freight, loading, and handling costs.',
-      badge: 'Precision',
-      color: 'bg-purple-50 text-purple-700 border-purple-200',
     },
   ];
 

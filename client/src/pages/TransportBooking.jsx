@@ -954,7 +954,7 @@ const TransportBooking = () => {
                   <span>Fixed & Guaranteed Rate</span>
                 </div>
                 <p className="text-emerald-800">
-                  Cost calculated based on the accepted mandi route. No recalculation or surprise net price recalculation.
+                  Cost calculated based on the accepted mandi route. No recalculation or surprise freight recalculation.
                 </p>
               </div>
 

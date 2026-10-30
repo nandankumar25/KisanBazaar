@@ -693,12 +693,6 @@ const TransactionDetails = () => {
           <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs space-y-2">
             <span className="font-bold text-slate-700 block">Related Navigation</span>
             <Link
-              to="/net-price"
-              className="block text-emerald-700 hover:underline font-semibold"
-            >
-              → Calculate Net Realization with Transporter
-            </Link>
-            <Link
               to="/transport"
               className="block text-emerald-700 hover:underline font-semibold"
             >
