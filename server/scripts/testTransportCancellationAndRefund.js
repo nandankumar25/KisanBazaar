@@ -220,11 +220,11 @@ async function runTransportCancellationTests() {
     });
     const farmerDelayedNotifsData = await farmerDelayedNotifsRes.json();
     const delayedRefundNotif = farmerDelayedNotifsData.data?.find((n) => n.type === 'TRANSPORT_REFUND');
-    assert(delayedRefundNotif && delayedRefundNotif.title === 'Transport Refund Initiated', 'Farmer received delayed notification with title "Transport Refund Initiated"');
+    assert(delayedRefundNotif && delayedRefundNotif.title === 'Transport Refund Successful', 'Farmer received delayed notification with title "Transport Refund Successful"');
     assert(
       delayedRefundNotif &&
-        delayedRefundNotif.message === 'Your transport booking for Wheat4 (50 qtl) has been rejected. Your online payment refund of ₹840 has been initiated.',
-      'Delayed refund notification text dynamically matches crop, quantity, and exact refund amount'
+        delayedRefundNotif.message === 'Your transport booking for Wheat4 (50 qtl) has been rejected. Your refund of ₹840 has been successfully credited to your original payment method.',
+      'Delayed refund notification text dynamically matches crop, quantity, and exact refund amount with successfully credited message'
     );
 
     // Test Idempotency: Rejecting again should not double refund
@@ -368,12 +368,13 @@ async function runTransportCancellationTests() {
       (n) => n.relatedTransport?.toString() === booking3._id.toString() && n.type === 'TRANSPORT_REFUND'
     );
     assert(
-      cancelRefundNotif && cancelRefundNotif.title === 'Transport Refund Initiated',
-      'Farmer received delayed cancellation refund notification with title "Transport Refund Initiated"'
+      cancelRefundNotif && cancelRefundNotif.title === 'Transport Refund Successful',
+      'Farmer received delayed cancellation refund notification with title "Transport Refund Successful"'
     );
     assert(
-      cancelRefundNotif && cancelRefundNotif.message.includes('Wheat4') && cancelRefundNotif.message.includes('840'),
-      'Cancellation delayed refund notification text dynamically includes crop, quantity, and ₹840'
+      cancelRefundNotif &&
+        cancelRefundNotif.message === 'Your transport booking for Wheat4 (50 qtl) has been cancelled. Your refund of ₹840 has been successfully credited to your original payment method.',
+      'Cancellation delayed refund notification text dynamically includes crop, quantity, ₹840, and successfully credited message'
     );
 
     // ==============================================================
