@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Info,
   MessageSquare,
+  Package,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Avatar from './Avatar';
@@ -98,7 +99,7 @@ const Navbar = () => {
     };
 
     fetchMsgCount();
-    const interval = setInterval(fetchMsgCount, 15000);
+    const interval = setInterval(fetchMsgCount, 2000);
 
     const handleMessagesUpdated = () => {
       fetchMsgCount();
@@ -220,14 +221,20 @@ const Navbar = () => {
             ) : (
               /* Authenticated Navbars (Farmer, Buyer, Transporter, Admin) */
               <div className="flex items-center space-x-1 xl:space-x-2 2xl:space-x-3 text-sm">
-                {/* Admin Home */}
+                {/* Authenticated Admin Navigation */}
                 {user?.role === 'ADMIN' && (
-                  <Link to="/" className={navLinkClass('/')}>
-                    Home
+                  <Link
+                    to="/admin"
+                    className={`font-bold flex items-center space-x-1.5 text-purple-700 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-200 transition ${
+                      isActive('/admin') ? 'ring-2 ring-purple-400 bg-purple-100' : ''
+                    }`}
+                  >
+                    <Shield className="w-4 h-4 text-purple-600" />
+                    <span>Admin Dashboard</span>
                   </Link>
                 )}
 
-                {/* Authenticated Farmer Dashboard: Ordered first for Farmer */}
+                {/* Authenticated Farmer Dashboard */}
                 {user?.role === 'FARMER' && (
                   <Link to="/dashboard" className={navLinkClass('/dashboard')}>
                     <LayoutDashboard className="w-4 h-4" />
@@ -235,7 +242,7 @@ const Navbar = () => {
                   </Link>
                 )}
 
-                {/* Authenticated Buyer Dashboard: Ordered first for Buyer */}
+                {/* Authenticated Buyer Dashboard */}
                 {user?.role === 'BUYER' && (
                   <Link to="/buyer-dashboard" className={navLinkClass('/buyer-dashboard')}>
                     <LayoutDashboard className="w-4 h-4" />
@@ -243,7 +250,7 @@ const Navbar = () => {
                   </Link>
                 )}
 
-                {/* Authenticated Transporter Dashboard: Ordered first for Transporter */}
+                {/* Authenticated Transporter Dashboard */}
                 {user?.role === 'TRANSPORTER' && (
                   <Link to="/transporter-dashboard" className={navLinkClass('/transporter-dashboard')}>
                     <LayoutDashboard className="w-4 h-4" />
@@ -252,11 +259,17 @@ const Navbar = () => {
                 )}
 
                 {/* Authenticated Mandi Admin Dashboard */}
-                {(user?.role === 'MANDI_ADMIN' || user?.role === 'ADMIN') && (
-                  <Link to="/mandi-dashboard" className={navLinkClass('/mandi-dashboard')}>
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>Mandi Console</span>
-                  </Link>
+                {user?.role === 'MANDI_ADMIN' && (
+                  <>
+                    <Link to="/mandi-dashboard" className={navLinkClass('/mandi-dashboard')}>
+                      <LayoutDashboard className="w-4 h-4" />
+                      <span>Dashboard</span>
+                    </Link>
+                    <Link to="/mandi-offers" className={navLinkClass('/mandi-offers')}>
+                      <Package className="w-4 h-4" />
+                      <span>Offers</span>
+                    </Link>
+                  </>
                 )}
 
                 {/* Transporter: My Vehicles */}
@@ -267,24 +280,16 @@ const Navbar = () => {
                   </Link>
                 )}
 
-                {/* Mandi Prices: Hidden for Transporter, shown for Farmer, Buyer, Admin */}
-                {user?.role !== 'TRANSPORTER' && (
+                {/* Mandi Prices: Hidden for Transporter and Admin */}
+                {user?.role !== 'TRANSPORTER' && user?.role !== 'ADMIN' && (
                   <Link to="/mandi-prices" className={navLinkClass('/mandi-prices')}>
                     <TrendingUp className="w-4 h-4" />
                     <span>Mandi Prices</span>
                   </Link>
                 )}
 
-                {/* Farmer Dashboard for Admin */}
-                {user?.role === 'ADMIN' && (
-                  <Link to="/dashboard" className={navLinkClass('/dashboard')}>
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>Dashboard</span>
-                  </Link>
-                )}
-
                 {/* Farmer specific: My Crops, Offers, & Payments */}
-                {(user?.role === 'FARMER' || user?.role === 'ADMIN') && (
+                {user?.role === 'FARMER' && (
                   <>
                     <Link to="/my-crops" className={navLinkClass('/my-crops')}>
                       <SproutIcon className="w-4 h-4" />
@@ -308,7 +313,7 @@ const Navbar = () => {
                 )}
 
                 {/* Buyer Links: Find Crops & My Bids */}
-                {(user?.role === 'BUYER' || user?.role === 'ADMIN') && (
+                {user?.role === 'BUYER' && (
                   <>
                     <Link to="/find-crops" className={navLinkClass('/find-crops')}>
                       <span>Find Crops</span>
@@ -319,30 +324,11 @@ const Navbar = () => {
                   </>
                 )}
 
-                {/* Admin: My Fleet */}
-                {user?.role === 'ADMIN' && (
-                  <Link to="/transporter-dashboard" className={navLinkClass('/transporter-dashboard')}>
-                    <Truck className="w-4 h-4" />
-                    <span>My Fleet</span>
-                  </Link>
-                )}
-
-                {/* Tools Links */}
-                <Link to="/transactions" className={navLinkClass('/transactions')}>
-                  <Receipt className="w-4 h-4" />
-                  <span>Deals</span>
-                </Link>
-
-                {/* Admin Link */}
-                {user?.role === 'ADMIN' && (
-                  <Link
-                    to="/admin"
-                    className={`font-bold flex items-center space-x-1.5 text-purple-700 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-200 transition ${
-                      isActive('/admin') ? 'ring-2 ring-purple-400' : ''
-                    }`}
-                  >
-                    <Shield className="w-3.5 h-3.5" />
-                    <span>Admin</span>
+                {/* Deals (Farmer, Buyer, Transporter, Mandi Admin) */}
+                {user?.role !== 'ADMIN' && (
+                  <Link to="/transactions" className={navLinkClass('/transactions')}>
+                    <Receipt className="w-4 h-4" />
+                    <span>Deals</span>
                   </Link>
                 )}
 
@@ -356,7 +342,7 @@ const Navbar = () => {
                 >
                   <MessageSquare className="w-5 h-5" />
                   {unreadMessagesCount > 0 && (
-                    <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white ring-2 ring-white">
+                    <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white ring-2 ring-white animate-pulse">
                       {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
                     </span>
                   )}
@@ -491,18 +477,32 @@ const Navbar = () => {
                         )}
 
                         {user?.role === 'MANDI_ADMIN' && (
-                          <Link
-                            to="/mandi-dashboard"
-                            onClick={() => setUserMenuOpen(false)}
-                            className={`flex items-center space-x-2.5 px-4 py-2.5 text-xs font-semibold transition ${
-                              isActive('/mandi-dashboard')
-                                ? 'bg-amber-50 text-amber-900'
-                                : 'text-slate-700 hover:bg-amber-50 hover:text-amber-800'
-                            }`}
-                          >
-                            <LayoutDashboard className="w-4 h-4 text-amber-600" />
-                            <span>Mandi Dashboard</span>
-                          </Link>
+                          <>
+                            <Link
+                              to="/mandi-dashboard"
+                              onClick={() => setUserMenuOpen(false)}
+                              className={`flex items-center space-x-2.5 px-4 py-2.5 text-xs font-semibold transition ${
+                                isActive('/mandi-dashboard')
+                                  ? 'bg-amber-50 text-amber-900'
+                                  : 'text-slate-700 hover:bg-amber-50 hover:text-amber-800'
+                              }`}
+                            >
+                              <LayoutDashboard className="w-4 h-4 text-amber-600" />
+                              <span>Dashboard</span>
+                            </Link>
+                            <Link
+                              to="/mandi-offers"
+                              onClick={() => setUserMenuOpen(false)}
+                              className={`flex items-center space-x-2.5 px-4 py-2.5 text-xs font-semibold transition ${
+                                isActive('/mandi-offers')
+                                  ? 'bg-amber-50 text-amber-900'
+                                  : 'text-slate-700 hover:bg-amber-50 hover:text-amber-800'
+                              }`}
+                            >
+                              <Package className="w-4 h-4 text-amber-600" />
+                              <span>Offers</span>
+                            </Link>
+                          </>
                         )}
 
                         {user?.role === 'ADMIN' && (
@@ -552,7 +552,7 @@ const Navbar = () => {
                 >
                   <MessageSquare className="w-5 h-5" />
                   {unreadMessagesCount > 0 && (
-                    <span className="absolute top-0 right-0 flex h-3.5 min-w-[14px] px-1 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-bold text-white ring-1 ring-white">
+                    <span className="absolute top-0 right-0 flex h-3.5 min-w-[14px] px-1 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold text-white ring-1 ring-white animate-pulse">
                       {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
                     </span>
                   )}
@@ -657,16 +657,7 @@ const Navbar = () => {
                 </span>
               </Link>
 
-              {/* Admin Home */}
-              {user?.role === 'ADMIN' && (
-                <Link
-                  to="/"
-                  onClick={() => setIsOpen(false)}
-                  className={mobileNavLinkClass('/')}
-                >
-                  Home
-                </Link>
-              )}
+
 
               {/* Authenticated Farmer Dashboard */}
               {user?.role === 'FARMER' && (
@@ -703,13 +694,22 @@ const Navbar = () => {
 
               {/* Authenticated Mandi Admin Dashboard */}
               {user?.role === 'MANDI_ADMIN' && (
-                <Link
-                  to="/mandi-dashboard"
-                  onClick={() => setIsOpen(false)}
-                  className={mobileNavLinkClass('/mandi-dashboard')}
-                >
-                  Mandi Dashboard
-                </Link>
+                <>
+                  <Link
+                    to="/mandi-dashboard"
+                    onClick={() => setIsOpen(false)}
+                    className={mobileNavLinkClass('/mandi-dashboard')}
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    to="/mandi-offers"
+                    onClick={() => setIsOpen(false)}
+                    className={mobileNavLinkClass('/mandi-offers')}
+                  >
+                    Offers
+                  </Link>
+                </>
               )}
 
               {/* Authenticated Transporter: My Vehicles */}
@@ -723,8 +723,8 @@ const Navbar = () => {
                 </Link>
               )}
 
-              {/* Mandi Prices: Hidden for Transporter, shown for Farmer, Buyer, Admin */}
-              {user?.role !== 'TRANSPORTER' && (
+              {/* Mandi Prices: Hidden for Transporter and Admin */}
+              {user?.role !== 'TRANSPORTER' && user?.role !== 'ADMIN' && (
                 <Link
                   to="/mandi-prices"
                   onClick={() => setIsOpen(false)}
@@ -734,19 +734,8 @@ const Navbar = () => {
                 </Link>
               )}
 
-              {/* Farmer Dashboard for Admin */}
-              {user?.role === 'ADMIN' && (
-                <Link
-                  to="/dashboard"
-                  onClick={() => setIsOpen(false)}
-                  className={mobileNavLinkClass('/dashboard')}
-                >
-                  Farmer Dashboard
-                </Link>
-              )}
-
               {/* Farmer Links: My Crops, Offers, & Payments */}
-              {(user?.role === 'FARMER' || user?.role === 'ADMIN') && (
+              {user?.role === 'FARMER' && (
                 <>
                   <Link
                     to="/my-crops"
@@ -774,7 +763,7 @@ const Navbar = () => {
               )}
 
               {/* Buyer Links: Find Crops & My Bids */}
-              {(user?.role === 'BUYER' || user?.role === 'ADMIN') && (
+              {user?.role === 'BUYER' && (
                 <>
                   <Link
                     to="/find-crops"
@@ -793,25 +782,16 @@ const Navbar = () => {
                 </>
               )}
 
-              {/* Admin: My Fleet */}
-              {user?.role === 'ADMIN' && (
+              {/* Deals: Hidden for Admin */}
+              {user?.role !== 'ADMIN' && (
                 <Link
-                  to="/transporter-dashboard"
+                  to="/transactions"
                   onClick={() => setIsOpen(false)}
-                  className={mobileNavLinkClass('/transporter-dashboard')}
+                  className={mobileNavLinkClass('/transactions')}
                 >
-                  Transporter Fleet Dashboard
+                  Deals
                 </Link>
               )}
-
-              {/* Tools Links */}
-              <Link
-                to="/transactions"
-                onClick={() => setIsOpen(false)}
-                className={mobileNavLinkClass('/transactions')}
-              >
-                Deals
-              </Link>
 
               <Link
                 to="/messages"
@@ -823,7 +803,7 @@ const Navbar = () => {
                   <span>Messages & Chat</span>
                 </span>
                 {unreadMessagesCount > 0 && (
-                  <span className="bg-emerald-600 text-white font-bold text-xs px-2 py-0.5 rounded-full">
+                  <span className="bg-rose-600 text-white font-bold text-xs px-2 py-0.5 rounded-full">
                     {unreadMessagesCount}
                   </span>
                 )}

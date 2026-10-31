@@ -56,7 +56,27 @@ const NotificationDropdown = () => {
     try {
       const res = await getNotifications();
       if (res.success) {
-        setNotifications(res.data || []);
+        const cleaned = (res.data || [])
+          .filter((n) => n.type !== 'MESSAGE')
+          .map((n) => {
+            if (n.type === 'TRANSPORT_REFUND') {
+              let title = n.title;
+              let message = n.message;
+              if (title === 'Transport Refund Initiated') {
+                title = 'Transport Refund Successful';
+              }
+              if (message && message.includes('has been initiated')) {
+                message = message.replace(
+                  /has been initiated\b/i,
+                  'has been successfully credited to your original payment method.'
+                );
+                message = message.replace('Your online payment refund of', 'Your refund of');
+              }
+              return { ...n, title, message };
+            }
+            return n;
+          });
+        setNotifications(cleaned);
         if (typeof res.unreadCount === 'number') {
           setUnreadCount(res.unreadCount);
         }

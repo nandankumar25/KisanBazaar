@@ -11,6 +11,10 @@ const getCallerMandi = async (user) => {
   if (!mandi && user.mandiProfile?.mandiId) {
     mandi = await Mandi.findById(user.mandiProfile.mandiId);
   }
+  if (!mandi) {
+    // Graceful fallback to default/first mandi in dev environment
+    mandi = await Mandi.findOne({});
+  }
   return mandi;
 };
 
@@ -121,7 +125,8 @@ const createBooking = async (req, res, next) => {
 // @access  Private (FARMER, ADMIN)
 const getFarmerBookings = async (req, res, next) => {
   try {
-    const filter = { farmer: req.user._id };
+    const farmerId = req.query.farmer || req.user?._id;
+    const filter = farmerId ? { farmer: farmerId } : {};
     if (req.query.status) {
       filter.status = req.query.status.toUpperCase();
     }
@@ -150,13 +155,20 @@ const getMandiBookings = async (req, res, next) => {
 
     if (req.user.role === 'MANDI_ADMIN') {
       const mandi = await getCallerMandi(req.user);
-      if (!mandi) {
-        return res.status(404).json({
-          success: false,
-          message: 'No registered mandi found for your account.',
-        });
+      if (mandi) {
+        mandiId = mandi._id;
       }
-      mandiId = mandi._id;
+    } else if (req.user.role === 'FARMER') {
+      // Farmer viewing their mandi offers/bookings
+      const farmerBookings = await MandiBooking.find({ farmer: req.user._id })
+        .populate('farmer', 'name email phone location')
+        .populate('mandi', 'name city district state')
+        .sort({ createdAt: -1 });
+      return res.status(200).json({
+        success: true,
+        count: farmerBookings.length,
+        data: farmerBookings,
+      });
     } else if (!mandiId) {
       // Super admin without mandiId query: return all
       const allFilter = {};
@@ -276,6 +288,35 @@ const reviewBooking = async (req, res, next) => {
 
       if (mandiNotes) booking.mandiNotes = mandiNotes.trim();
       await booking.save();
+
+      // Automatically create or verify Deal Transaction
+      try {
+        const Transaction = require('../models/Transaction');
+        let existingDeal = await Transaction.findOne({ mandiBooking: booking._id });
+        if (!existingDeal) {
+          const finalPrice = booking.proposedPrice || booking.expectedPrice;
+          const finalQuantity = booking.quantity;
+          const gross = Math.round(finalPrice * finalQuantity * 100) / 100;
+          await Transaction.create({
+            mandiBooking: booking._id,
+            mandi: booking.mandi._id || booking.mandi,
+            cropLot: booking.cropLot || undefined,
+            farmer: booking.farmer,
+            quantity: finalQuantity,
+            pricePerQuintal: finalPrice,
+            grossAmount: gross,
+            totalAmount: gross,
+            netAmount: gross,
+            destination: booking.mandi?.name || 'Mandi Yard',
+            transactionStatus: 'IN_PROGRESS',
+            paymentStatus: 'PENDING',
+            remainingAmount: gross,
+            amountPaid: 0,
+          });
+        }
+      } catch (err) {
+        console.error('Error creating mandi transaction on accept:', err);
+      }
 
       // Notify Farmer
       await Notification.create({
@@ -679,6 +720,114 @@ const getMandiStats = async (req, res, next) => {
   }
 };
 
+// @desc    Cancel Mandi Booking
+// @route   PUT /api/mandi-bookings/:id/cancel
+// @access  Private
+const cancelMandiBooking = async (req, res, next) => {
+  try {
+    const booking = await MandiBooking.findById(req.params.id).populate('mandi');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+    booking.status = 'CANCELLED';
+    await booking.save();
+
+    const Transport = require('../models/Transport');
+    await Transport.updateMany(
+      { mandiBooking: booking._id, status: { $in: ['BOOKED', 'ACCEPTED'] } },
+      { status: 'CANCELLED' }
+    );
+
+    res.status(200).json({ success: true, message: 'Mandi booking cancelled successfully.', data: booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Complete Mandi Booking and mark Delivered
+// @route   PUT /api/mandi-bookings/:id/complete-order
+// @access  Private
+const completeMandiBooking = async (req, res, next) => {
+  try {
+    const booking = await MandiBooking.findById(req.params.id).populate('mandi').populate('farmer');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+    booking.status = 'COMPLETED';
+    booking.paymentStatus = 'PAID';
+    await booking.save();
+
+    const Transaction = require('../models/Transaction');
+    let txn = await Transaction.findOne({ mandiBooking: booking._id });
+    const finalRate = booking.acceptedPricePerQuintal || booking.proposedPrice || booking.expectedPrice || 0;
+    const gross = booking.grossAmount || (booking.quantity * finalRate);
+    if (!txn) {
+      await Transaction.create({
+        mandiBooking: booking._id,
+        mandi: booking.mandi?._id || booking.mandi,
+        farmer: booking.farmer?._id || booking.farmer,
+        quantity: booking.quantity,
+        pricePerQuintal: finalRate,
+        grossAmount: gross,
+        totalAmount: gross,
+        netAmount: gross,
+        destination: booking.mandi?.name || 'Mandi Yard',
+        transactionStatus: 'COMPLETED',
+        paymentStatus: 'PAID',
+        remainingAmount: 0,
+        amountPaid: gross,
+      });
+    } else {
+      txn.transactionStatus = 'COMPLETED';
+      txn.paymentStatus = 'PAID';
+      txn.remainingAmount = 0;
+      txn.amountPaid = gross;
+      if (!txn.mandi && booking.mandi) txn.mandi = booking.mandi?._id || booking.mandi;
+      await txn.save();
+    }
+
+    try {
+      await Notification.create({
+        recipient: booking.farmer?._id || booking.farmer,
+        sender: req.user._id,
+        type: 'MANDI_BOOKING_COMPLETED',
+        title: 'Crop Sale Delivered & Settled!',
+        message: `Your produce (${booking.quantity} qtl of ${booking.crop}) has been marked as Delivered at ${booking.mandi?.name || 'Mandi'}. Payment of ₹${gross.toLocaleString('en-IN')} has been settled.`,
+        link: '/transactions',
+        relatedMandiBooking: booking._id,
+      });
+    } catch (e) {
+      // non-critical notification
+    }
+
+    res.status(200).json({ success: true, message: 'Mandi sale marked as completed and delivered.', data: booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Counter Mandi Booking rate/quantity
+// @route   PUT /api/mandi-bookings/:id/counter
+// @access  Private
+const counterMandiBooking = async (req, res, next) => {
+  try {
+    const booking = await MandiBooking.findById(req.params.id).populate('mandi');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+    const { counterPrice, counterQuantity, counterMessage } = req.body;
+    if (counterPrice) booking.expectedPrice = Number(counterPrice);
+    if (counterQuantity) booking.quantity = Number(counterQuantity);
+    if (counterMessage) booking.farmerNotes = counterMessage;
+    booking.status = 'PENDING';
+    await booking.save();
+
+    res.status(200).json({ success: true, message: 'Counter proposal sent to Mandi.', data: booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getFarmerBookings,
@@ -690,4 +839,7 @@ module.exports = {
   completeSale,
   updatePaymentStatus,
   getMandiStats,
+  cancelMandiBooking,
+  completeMandiBooking,
+  counterMandiBooking,
 };

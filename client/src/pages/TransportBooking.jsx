@@ -61,7 +61,8 @@ const TransportBooking = () => {
 
   // Mandi Sale Request & Crop Details
   const mandiBookingId = queryParams.get('mandiBookingId') || locationState.mandiBookingId || '';
-  const cropLotId = queryParams.get('cropLot') || locationState.selectedLot?._id || '';
+  const cropLotId = queryParams.get('cropLot') || locationState.cropLotId || locationState.selectedLot?._id || '';
+  const offerId = queryParams.get('offerId') || locationState.offerId || '';
   const cropName = queryParams.get('crop') || locationState.cropName || 'Crop';
   const quantity = Number(queryParams.get('quantity') || locationState.quantity || 0);
 
@@ -227,6 +228,9 @@ const TransportBooking = () => {
 
       if (cropLotId) {
         bookingPayload.cropLot = cropLotId;
+      }
+      if (offerId) {
+        bookingPayload.offer = offerId;
       }
       if (mandiBookingId) {
         bookingPayload.mandiBooking = mandiBookingId;

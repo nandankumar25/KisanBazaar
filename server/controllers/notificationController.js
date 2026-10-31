@@ -9,37 +9,37 @@ const getNotifications = async (req, res, next) => {
     const page = parseInt(req.query.page, 10) || 1;
     const skip = (page - 1) * limit;
 
+    const query = { recipient: req.user._id, type: { $ne: 'MESSAGE' } };
+
     const [notifications, unreadCount, total] = await Promise.all([
-      Notification.find({ recipient: req.user._id })
+      Notification.find(query)
         .populate('sender', 'name role avatar')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      Notification.countDocuments({ recipient: req.user._id, isRead: false }),
-      Notification.countDocuments({ recipient: req.user._id }),
+      Notification.countDocuments({ ...query, isRead: false }),
+      Notification.countDocuments(query),
     ]);
 
     // Auto-sync completed refund notifications so no stale "Initiated" status is displayed
     const Transport = require('../models/Transport');
     for (const notif of notifications) {
-      if (notif.type === 'TRANSPORT_REFUND' && notif.relatedTransport) {
+      if (notif.type === 'TRANSPORT_REFUND') {
         if (notif.title === 'Transport Refund Initiated' || notif.message.includes('initiated')) {
-          const transportDoc = await Transport.findById(notif.relatedTransport);
-          if (
-            transportDoc &&
-            (transportDoc.refundStatus === 'REFUND_SUCCESSFUL' ||
-              transportDoc.refundStatus === 'REFUNDED')
-          ) {
-            const cropName = transportDoc.cropName || 'Produce';
-            const qty = transportDoc.quantity || 50;
-            const amt = transportDoc.refundAmount || transportDoc.paidAmount || transportDoc.totalCost || 840;
-            const actionWord = (transportDoc.status === 'CANCELLED' || String(transportDoc.cancellationReason || '').trim())
-              ? 'cancelled'
-              : 'rejected';
+          const transportDoc = notif.relatedTransport ? await Transport.findById(notif.relatedTransport) : null;
+          const cropName = transportDoc?.cropName || 'Produce';
+          const qty = transportDoc?.quantity || 50;
+          const amt = transportDoc?.refundAmount || transportDoc?.paidAmount || transportDoc?.totalCost || 840;
+          const actionWord = (transportDoc?.status === 'CANCELLED' || String(transportDoc?.cancellationReason || '').trim())
+            ? 'cancelled'
+            : 'rejected';
 
-            notif.title = 'Transport Refund Successful';
-            notif.message = `Your transport booking for ${cropName} (${qty} qtl) has been ${actionWord}. Your refund of ₹${amt} has been successfully credited to your original payment method.`;
+          notif.title = 'Transport Refund Successful';
+          notif.message = `Your transport booking for ${cropName} (${qty} qtl) has been ${actionWord}. Your refund of ₹${amt} has been successfully credited to your original payment method.`;
+          try {
             await notif.save();
+          } catch (saveErr) {
+            console.error('Failed to auto-sync refund notification:', saveErr.message);
           }
         }
       }
@@ -65,6 +65,7 @@ const getUnreadCount = async (req, res, next) => {
   try {
     const unreadCount = await Notification.countDocuments({
       recipient: req.user._id,
+      type: { $ne: 'MESSAGE' },
       isRead: false,
     });
 
@@ -114,7 +115,7 @@ const markAsRead = async (req, res, next) => {
 const markAllAsRead = async (req, res, next) => {
   try {
     await Notification.updateMany(
-      { recipient: req.user._id, isRead: false },
+      { recipient: req.user._id, type: { $ne: 'MESSAGE' }, isRead: false },
       { isRead: true, readAt: Date.now() }
     );
 

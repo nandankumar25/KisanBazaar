@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Store, Calendar, TrendingUp } from 'lucide-react';
+import { Store, Calendar, TrendingUp, MapPin, ShieldCheck, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 const formatCurrency = (amount) => {
   if (amount === undefined || amount === null) return '₹0';
@@ -20,95 +20,185 @@ const formatDate = (dateString) => {
   });
 };
 
+const getCropEmoji = (cropName) => {
+  const map = {
+    wheat: '🌾',
+    rice: '🍚',
+    paddy: '🌾',
+    maize: '🌽',
+    corn: '🌽',
+    potato: '🥔',
+    mustard: '🟡',
+    cotton: '☁️',
+    sugarcane: '🎋',
+    soybean: '🫘',
+    onion: '🧅',
+    tomato: '🍅',
+    chilli: '🌶️',
+    barley: '🌾',
+    gram: '🫘',
+    garlic: '🧄',
+    ginger: '🫚'
+  };
+  return map[cropName?.toLowerCase()] || '🌱';
+};
+
 const PriceTable = ({ prices = [], showHeader = true, onBookMandi }) => {
   if (!prices || prices.length === 0) {
     return (
-      <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center text-slate-500 text-sm">
-        No mandi price data available matching your search or filters.
+      <div className="bg-white rounded-3xl p-10 border border-slate-200/90 text-center shadow-xs">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mb-3 shadow-inner">
+          📊
+        </div>
+        <h3 className="text-base font-bold text-slate-800">No Price Records Found</h3>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-md mx-auto">
+          No mandi price records match your current search criteria or active filters. Try resetting the filters above.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="hidden md:block overflow-x-auto bg-white rounded-3xl border border-slate-200/90 shadow-sm">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-50/80 border-b border-slate-200 text-xs uppercase font-semibold text-slate-500 tracking-wider">
-              <th className="py-3.5 px-4">Crop</th>
-              <th className="py-3.5 px-4">Grade</th>
-              <th className="py-3.5 px-4">Mandi</th>
-              <th className="py-3.5 px-4">Location</th>
-              <th className="py-3.5 px-4 text-right">Min Price</th>
-              <th className="py-3.5 px-4 text-right">Max Price</th>
-              <th className="py-3.5 px-4 text-right">Modal Price</th>
-              <th className="py-3.5 px-4">Price Source</th>
-              <th className="py-3.5 px-4 text-right">Date</th>
-              {onBookMandi && <th className="py-3.5 px-4 text-right">Action</th>}
+            <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] uppercase font-extrabold text-slate-500 tracking-wider">
+              <th className="py-4 px-5">Crop Commodity</th>
+              <th className="py-4 px-4">Quality Grade</th>
+              <th className="py-4 px-5">Mandi Yard</th>
+              <th className="py-4 px-4">Location</th>
+              <th className="py-4 px-4 text-right">Min Rate</th>
+              <th className="py-4 px-4 text-right">Max Rate</th>
+              <th className="py-4 px-5 text-right">Modal Rate (Avg)</th>
+              <th className="py-4 px-4 text-center">Verification</th>
+              <th className="py-4 px-4 text-right">Reported Date</th>
+              {onBookMandi && <th className="py-4 px-5 text-right">Action</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm">
             {prices.map((item) => {
               const mandiName = item.mandi?.name || 'Mandi Market';
               const locationStr = item.mandi
-                ? `${item.mandi.city || item.mandi.district}, ${item.mandi.state}`
+                ? `${item.mandi.city || item.mandi.district || ''}${item.mandi.state ? `, ${item.mandi.state}` : ''}`
                 : 'Punjab';
+              const cropEmoji = getCropEmoji(item.crop);
+
+              // Calculate price spread position %
+              const min = Number(item.minPrice || 0);
+              const max = Number(item.maxPrice || 0);
+              const modal = Number(item.modalPrice || 0);
+              const spreadPct = max > min ? Math.min(100, Math.max(0, Math.round(((modal - min) / (max - min)) * 100))) : 50;
 
               return (
-                <tr key={item._id} className="hover:bg-emerald-50/40 transition">
-                  <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    <span>{item.crop} {item.variety ? `(${item.variety})` : ''}</span>
+                <tr 
+                  key={item._id} 
+                  className="hover:bg-emerald-50/30 transition-colors duration-150 group"
+                >
+                  {/* Crop Commodity */}
+                  <td className="py-4 px-5">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-lg shrink-0 group-hover:scale-105 transition-transform">
+                        {cropEmoji}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                          {item.crop}
+                        </div>
+                        {item.variety && (
+                          <div className="text-[11px] font-medium text-slate-500 truncate max-w-[140px]">
+                            {item.variety}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </td>
-                  <td className="py-3.5 px-4 text-xs font-semibold text-slate-700">
-                    {item.qualityGrade || 'Standard'}
+
+                  {/* Quality Grade */}
+                  <td className="py-4 px-4">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
+                      Grade {item.qualityGrade || 'A'}
+                    </span>
                   </td>
-                  <td className="py-3.5 px-4 text-slate-700 font-medium">
+
+                  {/* Mandi Yard */}
+                  <td className="py-4 px-5">
                     {item.mandi?._id ? (
                       <Link
                         to={`/mandi/${item.mandi._id}`}
-                        className="hover:text-emerald-700 hover:underline font-semibold"
+                        className="font-bold text-slate-900 hover:text-emerald-600 hover:underline flex items-center space-x-1.5 transition-colors"
                       >
-                        {mandiName}
+                        <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate max-w-[180px]">{mandiName}</span>
                       </Link>
                     ) : (
-                      mandiName
+                      <span className="font-bold text-slate-800 flex items-center space-x-1.5">
+                        <Store className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate max-w-[180px]">{mandiName}</span>
+                      </span>
                     )}
                   </td>
-                  <td className="py-3.5 px-4 text-slate-500 text-xs">{locationStr}</td>
-                  <td className="py-3.5 px-4 text-right text-slate-600 font-mono text-xs">
+
+                  {/* Location */}
+                  <td className="py-4 px-4 text-xs font-medium text-slate-600">
+                    <span className="flex items-center space-x-1">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate max-w-[140px]">{locationStr}</span>
+                    </span>
+                  </td>
+
+                  {/* Min Rate */}
+                  <td className="py-4 px-4 text-right text-xs font-semibold text-slate-500 font-mono">
                     {formatCurrency(item.minPrice)}
                   </td>
-                  <td className="py-3.5 px-4 text-right text-slate-600 font-mono text-xs">
+
+                  {/* Max Rate */}
+                  <td className="py-4 px-4 text-right text-xs font-semibold text-slate-500 font-mono">
                     {formatCurrency(item.maxPrice)}
                   </td>
-                  <td className="py-3.5 px-4 text-right font-bold text-emerald-700 font-mono">
-                    {formatCurrency(item.modalPrice)}
+
+                  {/* Modal Rate (Avg) */}
+                  <td className="py-4 px-5 text-right">
+                    <div className="inline-flex flex-col items-end">
+                      <span className="text-sm font-black text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200/80 font-mono shadow-2xs">
+                        {formatCurrency(item.modalPrice)}
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">/ {item.unit || 'qtl'}</span>
+                    </div>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+
+                  {/* Verification */}
+                  <td className="py-4 px-4 text-center">
+                    <span className={`inline-flex items-center space-x-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
                       item.isOfficiallyVerified
                         ? 'bg-purple-50 text-purple-800 border-purple-200'
                         : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                     }`}>
-                      {item.isOfficiallyVerified ? 'Official MSP' : 'Mandi Reported'}
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>{item.isOfficiallyVerified ? 'Official MSP' : 'Verified APMC'}</span>
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-right text-slate-400 text-xs whitespace-nowrap">
+
+                  {/* Reported Date */}
+                  <td className="py-4 px-4 text-right text-xs text-slate-500 whitespace-nowrap">
                     {formatDate(item.date)}
                   </td>
+
+                  {/* Action */}
                   {onBookMandi && (
-                    <td className="py-3.5 px-4 text-right">
-                      {item.mandi && (
+                    <td className="py-4 px-5 text-right">
+                      {item.mandi ? (
                         <button
                           type="button"
                           onClick={() => onBookMandi(item.mandi)}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                          className="inline-flex items-center space-x-1 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition shadow-2xs hover:shadow-sm"
                         >
-                          Sell Here →
+                          <span>Sell Here</span>
+                          <ArrowRight className="w-3 h-3" />
                         </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
                       )}
                     </td>
                   )}
@@ -120,71 +210,101 @@ const PriceTable = ({ prices = [], showHeader = true, onBookMandi }) => {
       </div>
 
       {/* Mobile Card List View */}
-      <div className="grid grid-cols-1 gap-3 md:hidden">
+      <div className="grid grid-cols-1 gap-3.5 md:hidden">
         {prices.map((item) => {
           const mandiName = item.mandi?.name || 'Mandi Market';
           const locationStr = item.mandi
-            ? `${item.mandi.city || item.mandi.district}, ${item.mandi.state}`
+            ? `${item.mandi.city || item.mandi.district || ''}${item.mandi.state ? `, ${item.mandi.state}` : ''}`
             : 'Punjab';
+          const cropEmoji = getCropEmoji(item.crop);
 
           return (
-            <div key={item._id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs">
-                      {item.crop}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {item.qualityGrade || 'Standard'}
+            <div 
+              key={item._id} 
+              className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3 relative overflow-hidden"
+            >
+              {/* Top Accent Strip */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-xl shrink-0">
+                    {cropEmoji}
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-slate-900 text-sm">
+                      {item.crop} {item.variety ? `• ${item.variety}` : ''}
+                    </h4>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 mt-0.5">
+                      Grade {item.qualityGrade || 'A'}
                     </span>
                   </div>
-                  <h4 className="font-bold text-slate-900 text-sm flex items-center">
-                    <Store className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                    {item.mandi?._id ? (
-                      <Link
-                        to={`/mandi/${item.mandi._id}`}
-                        className="hover:text-emerald-700 hover:underline"
-                      >
-                        {mandiName}
-                      </Link>
-                    ) : (
-                      mandiName
-                    )}
-                  </h4>
-                  <p className="text-xs text-slate-500">{locationStr}</p>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-400 uppercase font-semibold">Modal Rate</span>
-                  <div className="text-lg font-bold text-emerald-700 font-mono">
-                    {formatCurrency(item.modalPrice)}
-                  </div>
-                  <span className="text-xs text-slate-400">/ {item.unit || 'quintal'}</span>
-                </div>
-              </div>
 
-              <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs text-slate-600">
-                <div>Min: <span className="font-semibold text-slate-800">{formatCurrency(item.minPrice)}</span></div>
-                <div>Max: <span className="font-semibold text-slate-800">{formatCurrency(item.maxPrice)}</span></div>
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  {item.isOfficiallyVerified ? 'MSP' : 'Reported'}
+                <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  item.isOfficiallyVerified
+                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}>
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>{item.isOfficiallyVerified ? 'MSP' : 'Verified'}</span>
                 </span>
               </div>
 
+              {/* Mandi & Location */}
+              <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
+                <div className="truncate mr-2">
+                  <div className="font-bold text-slate-800 flex items-center space-x-1 truncate">
+                    <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    {item.mandi?._id ? (
+                      <Link to={`/mandi/${item.mandi._id}`} className="hover:text-emerald-700 hover:underline truncate">
+                        {mandiName}
+                      </Link>
+                    ) : (
+                      <span className="truncate">{mandiName}</span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-500 flex items-center space-x-1 mt-0.5">
+                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className="truncate">{locationStr}</span>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0 text-[11px] text-slate-400">
+                  {formatDate(item.date)}
+                </div>
+              </div>
+
+              {/* Price Stats Grid */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Min Rate</span>
+                  <span className="text-xs font-bold text-slate-700 font-mono">{formatCurrency(item.minPrice)}</span>
+                </div>
+                <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-200">
+                  <span className="text-[10px] uppercase font-bold text-emerald-800 block">Modal Rate</span>
+                  <span className="text-sm font-black text-emerald-900 font-mono">{formatCurrency(item.modalPrice)}</span>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Max Rate</span>
+                  <span className="text-xs font-bold text-slate-700 font-mono">{formatCurrency(item.maxPrice)}</span>
+                </div>
+              </div>
+
+              {/* Action Button */}
               {onBookMandi && item.mandi && (
                 <button
                   type="button"
                   onClick={() => onBookMandi(item.mandi)}
-                  className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm mt-2"
+                  className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center space-x-1.5"
                 >
-                  Sell Produce to this Mandi →
+                  <Store className="w-3.5 h-3.5" />
+                  <span>Sell Produce to {mandiName}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           );
         })}
       </div>
-
     </div>
   );
 };

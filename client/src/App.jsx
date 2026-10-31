@@ -30,6 +30,7 @@ import TransactionDetails from './pages/TransactionDetails';
 import TransporterDashboard from './pages/TransporterDashboard';
 import MyVehicles from './pages/MyVehicles';
 import MandiDashboard from './pages/MandiDashboard';
+import MandiOffers from './pages/MandiOffers';
 import MandiDetails from './pages/MandiDetails';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
@@ -54,7 +55,7 @@ function App() {
             <Route path="transport" element={<TransportFinder />} />
             <Route path="book-transport" element={<TransportBooking />} />
             <Route path="transactions" element={<Transactions />} />
-            <Route path="transaction/:id" element={<TransactionDetails />} />
+            <Route path="transaction/:id" element={<Navigate to="/transactions" replace />} />
             <Route path="mandi/:id" element={<MandiDetails />} />
             <Route path="mandis/:id" element={<MandiDetails />} />
 
@@ -166,7 +167,7 @@ function App() {
             <Route
               path="make-offer/:cropLotId"
               element={
-                <ProtectedRoute allowedRoles={['BUYER', 'ADMIN']}>
+                <ProtectedRoute allowedRoles={['BUYER', 'ADMIN', 'FARMER']}>
                   <MakeOffer />
                 </ProtectedRoute>
               }
@@ -179,6 +180,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="my-bids" element={<Navigate to="/my-offers" replace />} />
+            <Route path="bids" element={<Navigate to="/my-offers" replace />} />
             <Route
               path="buyer-dashboard"
               element={
@@ -209,6 +212,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="transporter" element={<Navigate to="/transporter-dashboard" replace />} />
             <Route
               path="my-vehicles"
               element={
@@ -227,6 +231,15 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="mandi-offers"
+              element={
+                <ProtectedRoute allowedRoles={['MANDI_ADMIN', 'ADMIN', 'FARMER']}>
+                  <MandiOffers />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="admin-offers" element={<Navigate to="/mandi-offers" replace />} />
 
             {/* Super Admin Control Panel (Protected: ADMIN) */}
             <Route

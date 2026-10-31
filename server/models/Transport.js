@@ -21,6 +21,11 @@ const transportSchema = new mongoose.Schema(
       ref: 'CropLot',
       required: false,
     },
+    offer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Offer',
+      required: false,
+    },
     mandiBooking: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'MandiBooking',

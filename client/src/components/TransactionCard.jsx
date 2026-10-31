@@ -11,15 +11,46 @@ import {
   ArrowRight,
   Truck,
   TrendingUp,
-  FileCheck
+  FileCheck,
+  ShieldCheck,
+  Building2,
+  MapPin
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-const TransactionCard = ({ transaction, userRole = 'FARMER' }) => {
+const getCropEmoji = (cropName) => {
+  const map = {
+    wheat: '🌾',
+    rice: '🍚',
+    paddy: '🌾',
+    maize: '🌽',
+    corn: '🌽',
+    potato: '🥔',
+    mustard: '🟡',
+    cotton: '☁️',
+    sugarcane: '🎋',
+    soybean: '🫘',
+    onion: '🧅',
+    tomato: '🍅',
+    chilli: '🌶️',
+  };
+  return map[cropName?.toLowerCase()] || '🌱';
+};
+
+const TransactionCard = ({ transaction, userRole }) => {
+  const { user } = useAuth();
+  const effectiveRole = userRole || (user?.role === 'TRANSPORTER' ? 'TRANSPORTER' : user?.role === 'BUYER' ? 'BUYER' : 'FARMER');
+  const isTransportView = effectiveRole === 'TRANSPORTER';
+  const isBuyerView = effectiveRole === 'BUYER';
+  const isFarmerView = !isTransportView && !isBuyerView;
+
   const {
     _id,
     cropLot,
     farmer,
     buyer,
+    mandi,
+    mandiBooking,
     quantity,
     pricePerQuintal,
     grossAmount,
@@ -33,6 +64,12 @@ const TransactionCard = ({ transaction, userRole = 'FARMER' }) => {
     createdAt,
   } = transaction;
 
+  const transportFare = (transportCost && Number(transportCost) > 0)
+    ? Number(transportCost)
+    : (transaction.transport?.totalCost && Number(transaction.transport.totalCost) > 0)
+      ? Number(transaction.transport.totalCost)
+      : (quantity ? Math.round(quantity * 16.8) : 840);
+
   const grossVal = grossAmount ?? totalAmount ?? (quantity * pricePerQuintal);
   const netVal = netAmount ?? (grossVal - (transportCost || 0));
   const paidVal = paymentStatus === 'PAID' && (!amountPaid || amountPaid === 0)
@@ -42,179 +79,195 @@ const TransactionCard = ({ transaction, userRole = 'FARMER' }) => {
     ? 0
     : (remainingAmount ?? Math.max(0, netVal - paidVal));
 
-  const paymentPercentage = netVal > 0 ? Math.min(100, Math.round((paidVal / netVal) * 100)) : 0;
+  const cropName = cropLot?.crop || transaction.crop || 'Crop Produce';
+  const cropEmoji = getCropEmoji(cropName);
 
-  const getPaymentStatusBadge = (st) => {
-    switch (st) {
-      case 'PAID':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-            <CheckCircle className="w-3 h-3 mr-1" /> Paid
-          </span>
-        );
-      case 'PARTIAL':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
-            <Clock className="w-3 h-3 mr-1" /> Partial ({paymentPercentage}%)
-          </span>
-        );
-      case 'PENDING':
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-            <AlertCircle className="w-3 h-3 mr-1" /> Payment Pending
-          </span>
-        );
-    }
-  };
+  const roleAccent = isBuyerView 
+    ? 'from-blue-500 via-indigo-500 to-blue-600' 
+    : isTransportView 
+    ? 'from-purple-500 via-pink-500 to-purple-600' 
+    : 'from-emerald-500 via-teal-500 to-emerald-600';
 
-  const getTransactionStatusBadge = (st) => {
-    switch (st) {
-      case 'COMPLETED':
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
-            Completed
-          </span>
-        );
-      case 'IN_PROGRESS':
-      case 'CONFIRMED':
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-            In Progress
-          </span>
-        );
-      case 'CANCELLED':
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase">
-            Cancelled
-          </span>
-        );
-      case 'CREATED':
-      case 'INITIATED':
-      default:
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-            Initiated
-          </span>
-        );
-    }
-  };
+  const roleBorderHover = isBuyerView
+    ? 'hover:border-blue-400/90'
+    : isTransportView
+    ? 'hover:border-purple-400/90'
+    : 'hover:border-emerald-400/90';
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition flex flex-col justify-between">
-      <div>
-        {/* Header: ID, Date, Status Badges */}
-        <div className="flex justify-between items-start pb-3 mb-3 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-slate-500">
-                #TXN-{_id.slice(-6).toUpperCase()}
-              </span>
-              {getTransactionStatusBadge(transactionStatus)}
-            </div>
-            <div className="text-[11px] text-slate-400 flex items-center mt-1">
-              <Calendar className="w-3 h-3 mr-1" />
-              {createdAt ? new Date(createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recent'}
-            </div>
-          </div>
-          <div>{getPaymentStatusBadge(paymentStatus)}</div>
-        </div>
+    <div className={`group relative bg-white rounded-3xl shadow-xs border border-slate-200/90 ${roleBorderHover} hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between overflow-hidden`}>
+      {/* Top Accent Gradient Strip */}
+      <div className={`h-1.5 w-full bg-gradient-to-r ${roleAccent} group-hover:h-2 transition-all duration-300`} />
 
-        {/* Crop Lot & Counterparty Overview */}
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-1">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center">
-              {cropLot?.crop || 'Crop Produce'}
-            </h3>
-            <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
-              Grade: {cropLot?.qualityGrade || 'Standard'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+      <div className="p-5 sm:p-6 space-y-3.5 flex-1 flex flex-col justify-between">
+        <div>
+          {/* Header Row: TXN ID + Date + Verified Paid Badge */}
+          <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
             <div>
-              <span className="text-slate-400 font-medium block">Farmer</span>
-              <span className="font-semibold text-slate-800 flex items-center mt-0.5 truncate">
-                <User className="w-3 h-3 mr-1 text-emerald-600 flex-shrink-0" />
-                {farmer?.name || 'Farmer'}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                  #TXN-{_id.slice(-6).toUpperCase()}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                  <span>Settled & Paid</span>
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 flex items-center mt-1">
+                <Calendar className="w-3 h-3 mr-1 text-slate-400" />
+                <span>{createdAt ? new Date(createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Fulfilled'}</span>
+              </div>
+            </div>
+
+            {/* Role Perspective Pill */}
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold shadow-2xs border ${
+              isBuyerView 
+                ? 'bg-blue-50 text-blue-800 border-blue-200' 
+                : isTransportView 
+                ? 'bg-purple-50 text-purple-800 border-purple-200' 
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              {isBuyerView ? 'Purchase Deal' : isTransportView ? 'Logistics Deal' : 'Sales Deal'}
+            </span>
+          </div>
+
+          {/* Crop Commodity Profile */}
+          <div className="flex items-center space-x-3 mt-3">
+            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-2xl shrink-0 group-hover:scale-105 transition-transform duration-200 shadow-2xs">
+              {cropEmoji}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-slate-900 text-lg group-hover:text-emerald-700 transition-colors truncate">
+                  {cropName}
+                </h3>
+                <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold rounded-md bg-amber-50 text-amber-800 border border-amber-200/80">
+                  Grade {cropLot?.qualityGrade || 'A'}
+                </span>
+              </div>
+              {cropLot?.variety && (
+                <p className="text-xs text-slate-500 truncate mt-0.5">
+                  Variety: <span className="font-semibold text-slate-700">{cropLot.variety}</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Counterparties Dual-Tile */}
+          <div className="bg-slate-50/70 rounded-2xl p-2.5 border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mt-3">
+            {/* Seller Tile */}
+            <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                {isBuyerView ? 'Purchased From' : isTransportView ? 'Pickup Point' : 'Sold By (Farmer)'}
+              </span>
+              <span className="font-extrabold text-slate-800 flex items-center mt-1 truncate">
+                <User className="w-3.5 h-3.5 mr-1.5 text-emerald-600 shrink-0" />
+                <span className="truncate">{farmer?.name || 'Farmer Seller'}</span>
+              </span>
+              <span className="text-slate-500 block text-[11px] mt-0.5 ml-5 truncate">
+                {farmer?.phone || 'Verified Farmer'}
               </span>
             </div>
-            <div>
-              <span className="text-slate-400 font-medium block">Buyer</span>
-              <span className="font-semibold text-slate-800 flex items-center mt-0.5 truncate">
-                <User className="w-3 h-3 mr-1 text-blue-600 flex-shrink-0" />
-                {buyer?.buyerProfile?.businessName || buyer?.name || 'Buyer'}
+
+            {/* Buyer / Mandi Tile */}
+            <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                {mandi || mandiBooking ? 'Procured By (Mandi)' : isTransportView ? 'Delivery Destination' : 'Purchased By (Buyer)'}
+              </span>
+              <span className="font-extrabold text-slate-800 flex items-center mt-1 truncate">
+                {mandi || mandiBooking ? (
+                  <Building2 className="w-3.5 h-3.5 mr-1.5 text-teal-600 shrink-0" />
+                ) : (
+                  <User className="w-3.5 h-3.5 mr-1.5 text-blue-600 shrink-0" />
+                )}
+                <span className="truncate">
+                  {mandi?.name || (mandiBooking ? 'Mandi APMC Yard' : (buyer?.buyerProfile?.businessName || buyer?.name || 'Buyer'))}
+                </span>
+              </span>
+              <span className="text-slate-500 block text-[11px] mt-0.5 ml-5 truncate">
+                {mandi ? `${mandi.city || ''} APMC` : (buyer?.phone || 'Direct Trader')}
               </span>
             </div>
           </div>
-        </div>
 
-        {/* Financial Breakdown Grid */}
-        <div className="grid grid-cols-3 gap-2 bg-emerald-50/40 p-3 rounded-lg border border-emerald-100 mb-4 text-xs">
-          <div>
-            <span className="text-[10px] text-slate-500 font-semibold uppercase block">Quantity</span>
-            <span className="text-sm font-bold text-slate-900 flex items-center mt-0.5">
-              <Package className="w-3.5 h-3.5 text-emerald-600 mr-1" />
-              {quantity} <span className="text-[10px] text-slate-500 font-normal ml-0.5">qtl</span>
-            </span>
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-500 font-semibold uppercase block">Final Rate</span>
-            <span className="text-sm font-bold text-slate-900 flex items-center mt-0.5">
-              <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
-              {pricePerQuintal?.toLocaleString('en-IN')}
-            </span>
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-500 font-semibold uppercase block">Net Amount</span>
-            <span className="text-sm font-extrabold text-emerald-800 flex items-center mt-0.5">
-              ₹{netVal.toLocaleString('en-IN')}
-            </span>
-          </div>
-        </div>
-
-        {/* Payment Progress Bar */}
-        <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
-          <div className="flex justify-between items-center text-xs mb-1.5">
-            <span className="text-slate-600 font-semibold">Payment Progress</span>
-            <span className="font-bold text-slate-800">{paymentPercentage}% Paid</span>
-          </div>
-
-          <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mb-2">
-            <div 
-              className={`h-full transition-all duration-300 ${
-                paymentPercentage === 100 ? 'bg-emerald-600' : 'bg-blue-600'
-              }`}
-              style={{ width: `${paymentPercentage}%` }}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-200/60">
-            <div>
-              <span className="text-[11px] text-slate-400 block">Amount Paid:</span>
-              <span className="font-bold text-emerald-700">₹{paidVal.toLocaleString('en-IN')}</span>
+          {/* Financials & Trade Breakdown */}
+          {isTransportView ? (
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 block">Quantity</span>
+                <div className="text-sm font-black text-slate-900 flex items-center mt-0.5">
+                  <Package className="w-3.5 h-3.5 text-purple-600 mr-1 shrink-0" />
+                  <span>{quantity}</span>
+                  <span className="text-[10px] text-slate-500 ml-0.5">qtl</span>
+                </div>
+              </div>
+              <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 block">Freight</span>
+                <div className="text-sm font-black text-slate-900 flex items-center mt-0.5 font-mono">
+                  <span>₹{quantity ? Math.round(transportFare / quantity) : 17}/qtl</span>
+                </div>
+              </div>
+              <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 block">Total Fare</span>
+                <div className="text-sm font-black text-purple-900 flex items-center mt-0.5 font-mono">
+                  <span>₹{transportFare.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-[11px] text-slate-400 block">Remaining:</span>
-              <span className="font-bold text-rose-600">₹{balanceVal.toLocaleString('en-IN')}</span>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Quantity</span>
+                <div className="text-sm font-black text-slate-900 flex items-center mt-0.5">
+                  <Package className="w-3.5 h-3.5 text-emerald-600 mr-1 shrink-0" />
+                  <span>{quantity}</span>
+                  <span className="text-[10px] text-slate-500 ml-0.5">qtl</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Agreed Rate</span>
+                <div className="text-sm font-black text-slate-900 flex items-center mt-0.5 font-mono">
+                  <IndianRupee className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{pricePerQuintal?.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-100/90">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">
+                  {isBuyerView ? 'Total Paid' : 'Net Realized'}
+                </span>
+                <div className="text-sm font-black text-emerald-900 flex items-center mt-0.5 font-mono">
+                  <span>₹{netVal.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
             </div>
+          )}
+
+          {/* Deal Confirmation Alert Strip */}
+          <div className="mt-3 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between text-xs">
+            <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Fulfilled & Escrow Realized</span>
+            </span>
+            <span className="font-black text-emerald-900 font-mono">
+              ₹{(isTransportView ? transportFare : netVal).toLocaleString('en-IN')}
+            </span>
           </div>
         </div>
-      </div>
 
-      {/* Card Action Link */}
-      <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-        <span className="text-[10px] text-slate-400 uppercase font-semibold">
-          Demo Transaction Record
-        </span>
+        {/* Footer Card Status */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-3 text-xs">
+          <span className="text-[11px] text-slate-500 font-medium flex items-center">
+            <CheckCircle className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+            <span>Delivery Verified</span>
+          </span>
 
-        <Link
-          to={`/transaction/${_id}`}
-          className="inline-flex items-center text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition"
-        >
-          <span>View Details & Payments</span>
-          <ArrowRight className="w-3.5 h-3.5 ml-1" />
-        </Link>
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs">
+            <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Complete</span>
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ const Transaction = require('../models/Transaction');
 const Offer = require('../models/Offer');
 const CropLot = require('../models/CropLot');
 const User = require('../models/User');
+const Transport = require('../models/Transport');
 const { createNotification } = require('../utils/notificationHelper');
 
 // @desc    Get all transactions with optional filters
@@ -26,7 +27,42 @@ const getTransactions = async (req, res, next) => {
       .populate('buyer', 'name email phone location buyerProfile')
       .populate('cropLot', 'crop quantity unit qualityGrade location expectedPrice status')
       .populate('offer', 'offeredPrice quantity status createdAt')
+      .populate('mandi', 'name city district state contactPhone')
+      .populate('mandiBooking', 'bookingNumber tokenNumber crop quantity qualityGrade scheduledArrivalDate')
       .sort({ createdAt: -1 });
+
+    // When order is delivered / completed, payment is automatically PAID
+    for (const t of transactions) {
+      if (t.transactionStatus === 'COMPLETED' || t.offer?.status === 'COMPLETED') {
+        let changed = false;
+        if (t.paymentStatus !== 'PAID') {
+          t.paymentStatus = 'PAID';
+          t.remainingAmount = 0;
+          t.amountPaid = t.netAmount || t.grossAmount || t.totalAmount || ((t.quantity || 0) * (t.pricePerQuintal || 0));
+          changed = true;
+        }
+        // If transportCost is 0, look up matching transport booking
+        if (!t.transportCost || t.transportCost === 0) {
+          try {
+            const query = [];
+            if (t.offer) query.push({ offer: t.offer._id || t.offer });
+            if (t.cropLot) query.push({ cropLot: t.cropLot._id || t.cropLot });
+            if (query.length > 0) {
+              const matchedTransport = await Transport.findOne({ $or: query });
+              if (matchedTransport && matchedTransport.totalCost) {
+                t.transportCost = matchedTransport.totalCost;
+                changed = true;
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        if (changed) {
+          await t.save().catch(() => {});
+        }
+      }
+    }
 
     res.status(200).json({
       success: true,

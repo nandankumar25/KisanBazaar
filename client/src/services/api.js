@@ -252,6 +252,21 @@ export const updateMandiBookingPayment = async (id, data) => {
   return response.data;
 };
 
+export const cancelFarmerMandiBooking = async (id) => {
+  const response = await api.put(`/mandi-bookings/${id}/cancel`);
+  return response.data;
+};
+
+export const completeFarmerMandiBooking = async (id) => {
+  const response = await api.put(`/mandi-bookings/${id}/complete-order`);
+  return response.data;
+};
+
+export const counterFarmerMandiBooking = async (id, data) => {
+  const response = await api.put(`/mandi-bookings/${id}/counter`, data);
+  return response.data;
+};
+
 // Crop Lot API Services
 export const getCropLots = async (params = {}) => {
   const response = await api.get('/crop-lots', { params });
@@ -393,6 +408,11 @@ export const counterOffer = async (id, data) => {
 
 export const cancelOffer = async (id, data = {}) => {
   const response = await api.put(`/offers/${id}/cancel`, data);
+  return response.data;
+};
+
+export const completeOffer = async (id) => {
+  const response = await api.put(`/offers/${id}/complete`);
   return response.data;
 };
 

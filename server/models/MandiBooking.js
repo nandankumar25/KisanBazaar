@@ -108,6 +108,7 @@ const mandiBookingSchema = new mongoose.Schema(
           'QUALITY_CHECKED',
           'COMPLETED',
           'REJECTED',
+          'CANCELLED',
         ],
         message: '{VALUE} is not a valid booking status',
       },

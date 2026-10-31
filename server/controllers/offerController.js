@@ -11,7 +11,7 @@ const createOffer = async (req, res, next) => {
   try {
     const { cropLot: cropLotId, offeredPrice, quantity, message } = req.body;
     const buyerId = req.user
-      ? req.user.role === 'ADMIN' && req.body.buyer
+      ? (req.user.role === 'ADMIN' || req.user.role === 'FARMER') && req.body.buyer
         ? req.body.buyer
         : req.user._id
       : req.body.buyer;
@@ -72,10 +72,10 @@ const createOffer = async (req, res, next) => {
       });
     }
 
-    if (buyer.role !== 'BUYER' && (!req.user || req.user.role !== 'ADMIN')) {
+    if (buyer.role !== 'BUYER') {
       return res.status(400).json({
         success: false,
-        message: 'User making the offer must have BUYER role.',
+        message: 'Buyer specified for the offer must have BUYER role.',
       });
     }
 
@@ -86,11 +86,11 @@ const createOffer = async (req, res, next) => {
       quantity: numQty,
       message: message ? message.trim() : '',
       status: 'PENDING',
-      lastActionBy: 'BUYER',
+      lastActionBy: req.user && req.user.role === 'FARMER' ? 'FARMER' : 'BUYER',
       negotiationHistory: [
         {
-          actionBy: buyerId,
-          role: 'BUYER',
+          actionBy: req.user ? req.user._id : buyerId,
+          role: req.user && req.user.role === 'FARMER' ? 'FARMER' : 'BUYER',
           action: 'OFFER',
           price: numPrice,
           quantity: numQty,
@@ -100,8 +100,19 @@ const createOffer = async (req, res, next) => {
       ],
     });
 
-    // Notify farmer of incoming offer
-    if (cropLot.farmer) {
+    // Notify recipient of incoming offer
+    if (req.user && req.user.role === 'FARMER') {
+      await createNotification({
+        recipient: buyerId,
+        sender: req.user._id,
+        type: 'OFFER_RECEIVED',
+        title: 'New Crop Offer Received from Farmer',
+        message: `${req.user.name} proposed an offer of ₹${numPrice}/quintal for ${numQty} quintals of ${cropLot.crop}.`,
+        link: '/my-offers',
+        relatedOffer: newOffer._id,
+        relatedCropLot: cropLot._id,
+      });
+    } else if (cropLot.farmer) {
       const farmerId = cropLot.farmer._id || cropLot.farmer;
       await createNotification({
         recipient: farmerId,
@@ -240,16 +251,28 @@ const acceptOffer = async (req, res, next) => {
     const currentUserId = req.user ? req.user._id.toString() : null;
 
     // Authorization:
-    // If offer is PENDING (from buyer): Farmer can accept.
-    // If offer is COUNTERED by farmer: Buyer can accept.
-    // If offer is COUNTERED by buyer: Farmer can accept.
+    // If offer is PENDING:
+    //   - if offer.lastActionBy === 'FARMER': Buyer can accept.
+    //   - if offer.lastActionBy === 'BUYER': Farmer can accept.
+    // If offer is COUNTERED:
+    //   - if offer.lastActionBy === 'FARMER': Buyer can accept.
+    //   - if offer.lastActionBy === 'BUYER': Farmer can accept.
     if (req.user && req.user.role !== 'ADMIN') {
       if (offer.status === 'PENDING') {
-        if (currentUserId !== farmerId) {
-          return res.status(403).json({
-            success: false,
-            message: 'Only the crop lot owner can accept this initial offer.',
-          });
+        if (offer.lastActionBy === 'FARMER') {
+          if (currentUserId !== buyerId) {
+            return res.status(403).json({
+              success: false,
+              message: 'Only the buyer can accept this offer.',
+            });
+          }
+        } else {
+          if (currentUserId !== farmerId) {
+            return res.status(403).json({
+              success: false,
+              message: 'Only the crop lot owner can accept this initial offer.',
+            });
+          }
         }
       } else if (offer.status === 'COUNTERED') {
         if (offer.lastActionBy === 'FARMER' && currentUserId !== buyerId) {
@@ -602,16 +625,21 @@ const cancelOffer = async (req, res, next) => {
     }
 
     const buyerId = offer.buyer?.toString();
+    const cropLot = await CropLot.findById(offer.cropLot).populate('farmer', 'name email');
+    const farmerId = cropLot?.farmer?._id?.toString() || cropLot?.farmer?.toString();
     const currentUserId = req.user ? req.user._id.toString() : null;
 
-    if (req.user && req.user.role !== 'ADMIN' && currentUserId !== buyerId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only the buyer who created the offer can cancel it.',
-      });
+    if (req.user && req.user.role !== 'ADMIN') {
+      const isAuthorizedToCancel =
+        (offer.lastActionBy === 'FARMER' && currentUserId === farmerId) ||
+        (offer.lastActionBy === 'BUYER' && currentUserId === buyerId);
+      if (!isAuthorizedToCancel) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only the user who proposed the offer/counter can cancel it.',
+        });
+      }
     }
-
-    const cropLot = await CropLot.findById(offer.cropLot).populate('farmer', 'name email');
 
     offer.status = 'CANCELLED';
     offer.lastActionBy = 'BUYER';
@@ -662,6 +690,122 @@ const cancelOffer = async (req, res, next) => {
   }
 };
 
+// @desc    Mark offer & deal as completed / order delivered (by Buyer)
+// @route   PUT /api/offers/:id/complete
+// @access  Protected
+const completeOffer = async (req, res, next) => {
+  try {
+    const offer = await Offer.findById(req.params.id)
+      .populate('buyer', 'name email phone location')
+      .populate({
+        path: 'cropLot',
+        populate: { path: 'farmer', select: 'name email phone location' },
+      });
+
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offer not found',
+      });
+    }
+
+    if (!['ACCEPTED', 'COMPLETED'].includes(offer.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Only accepted offers can be marked as completed. Current status: ${offer.status}`,
+      });
+    }
+
+    // Update offer status and delivery
+    offer.status = 'COMPLETED';
+    offer.deliveryStatus = 'DELIVERED';
+    offer.negotiationHistory.push({
+      actionBy: req.user?._id || offer.buyer?._id || offer.buyer,
+      role: 'BUYER',
+      action: 'ACCEPT',
+      price: offer.offeredPrice,
+      quantity: offer.quantity,
+      message: 'Order delivered. Deal marked as completed.',
+      timestamp: new Date(),
+    });
+    await offer.save();
+
+    // Update related Transaction: mark COMPLETED and automatically PAID
+    try {
+      const transList = await Transaction.find({
+        $or: [{ offer: offer._id }, { cropLot: offer.cropLot?._id || offer.cropLot }],
+      });
+      for (const t of transList) {
+        t.transactionStatus = 'COMPLETED';
+        t.paymentStatus = 'PAID';
+        const paidTotal = t.netAmount || t.grossAmount || t.totalAmount || (offer.offeredPrice * offer.quantity);
+        t.amountPaid = paidTotal;
+        t.remainingAmount = 0;
+        t.paymentHistory.push({
+          amount: paidTotal,
+          paymentMethod: 'Auto Settled on Delivery',
+          note: 'Order delivered. Payment marked as paid automatically.',
+          date: new Date(),
+        });
+        await t.save();
+      }
+    } catch (tErr) {
+      // silent
+    }
+
+    // Update related CropLot (mark sold or adjust quantity)
+    if (offer.cropLot) {
+      const cropLot = await CropLot.findById(offer.cropLot._id || offer.cropLot);
+      if (cropLot) {
+        if (cropLot.quantity > offer.quantity) {
+          cropLot.quantity = Math.max(0, Math.round((cropLot.quantity - offer.quantity) * 100) / 100);
+          cropLot.status = 'AVAILABLE';
+        } else {
+          cropLot.status = 'SOLD';
+        }
+        await cropLot.save();
+      }
+    }
+
+    // Update related Transport if any
+    try {
+      await Transport.updateMany(
+        { $or: [{ offer: offer._id }, { cropLot: offer.cropLot?._id || offer.cropLot }] },
+        { status: 'COMPLETED' }
+      );
+    } catch (tErr) {
+      // silent
+    }
+
+    // Send notification to Farmer: "Order Delivered"
+    const farmerId = offer.cropLot?.farmer?._id || offer.cropLot?.farmer;
+    const buyerName = req.user?.name || offer.buyer?.name || 'Buyer';
+    const cropName = offer.cropLot?.crop || 'Crop';
+    const quantity = offer.quantity;
+
+    if (farmerId) {
+      await Notification.create({
+        recipient: farmerId,
+        sender: req.user?._id || offer.buyer?._id,
+        type: 'DEAL_CONFIRMED',
+        title: 'Order Delivered',
+        message: `Buyer ${buyerName} has marked your deal for ${cropName} (${quantity} quintals) as completed. Order delivered successfully!`,
+        link: '/offers',
+        relatedOffer: offer._id,
+        relatedCropLot: offer.cropLot?._id || offer.cropLot,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Order marked as completed. Order delivered notification sent to farmer.',
+      data: offer,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Update offer status (legacy backward compatibility)
 // @route   PUT /api/offers/:id/status
 // @access  Protected
@@ -676,6 +820,8 @@ const updateOfferStatus = async (req, res, next) => {
       return counterOffer(req, res, next);
     } else if (status === 'CANCELLED') {
       return cancelOffer(req, res, next);
+    } else if (status === 'COMPLETED') {
+      return completeOffer(req, res, next);
     }
 
     return res.status(400).json({
@@ -695,5 +841,6 @@ module.exports = {
   rejectOffer,
   counterOffer,
   cancelOffer,
+  completeOffer,
   updateOfferStatus,
 };

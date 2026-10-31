@@ -220,10 +220,10 @@ const FarmerMandiBookingModal = ({
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
               <a
                 href={`/transport?destination=${encodeURIComponent(selectedMandi?.name || 'Mandi Yard')}&crop=${encodeURIComponent(successBooking.cropName)}&quantity=${successBooking.estimatedQuantity || ''}&mandiBookingId=${successBooking._id}&cropLot=${selectedLotId || ''}`}
-                className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm"
+                className="w-full sm:w-auto px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-full text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm"
               >
                 <Truck className="w-4 h-4" />
-                <span>Find Transport for Delivery</span>
+                <span>Book Transport for Delivery</span>
               </a>
               <button
                 type="button"

@@ -1,8 +1,28 @@
 import React from 'react';
 import { Sprout } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Footer = () => {
+  const { user } = useAuth();
+
+  const getDashboardLink = (role) => {
+    switch (role) {
+      case 'FARMER':
+        return '/dashboard';
+      case 'BUYER':
+        return '/buyer-dashboard';
+      case 'TRANSPORTER':
+        return '/transporter-dashboard';
+      case 'MANDI_ADMIN':
+        return '/mandi-dashboard';
+      case 'ADMIN':
+        return '/admin';
+      default:
+        return '/dashboard';
+    }
+  };
+
   return (
     <footer className="bg-slate-900 text-slate-400 mt-auto border-t border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -31,12 +51,20 @@ const Footer = () => {
               <li>
                 <Link to="/" className="hover:text-emerald-400 transition">Home</Link>
               </li>
-              <li>
-                <Link to="/login" className="hover:text-emerald-400 transition">Login</Link>
-              </li>
-              <li>
-                <Link to="/register" className="hover:text-emerald-400 transition">Register</Link>
-              </li>
+              {user ? (
+                <li>
+                  <Link to={getDashboardLink(user.role)} className="hover:text-emerald-400 transition">Dashboard</Link>
+                </li>
+              ) : (
+                <>
+                  <li>
+                    <Link to="/login" className="hover:text-emerald-400 transition">Login</Link>
+                  </li>
+                  <li>
+                    <Link to="/register" className="hover:text-emerald-400 transition">Register</Link>
+                  </li>
+                </>
+              )}
             </ul>
           </div>
 

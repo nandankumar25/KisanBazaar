@@ -145,23 +145,29 @@ async function runMessagingAndNotificationTests() {
     assert(buyerConvItem.unreadCount === 1, 'Conversation displays unreadCount = 1 for Buyer');
     assert(buyerConvItem.otherUser?.name === 'Kisan Test Farmer', 'Conversation otherUser correctly populated as Farmer');
 
-    // 8. Buyer checks notification received for new message
+    // 8. Verify Chat Messages are separated from Notifications
+    // Chat icon unread count is 1, but notification bell does NOT show chat messages
+    const buyerUnreadMsgRes1 = await fetch(`${baseUrl}/messages/unread-count`, {
+      method: 'GET',
+      headers: buyerHeaders,
+    });
+    const buyerUnreadMsgData1 = await buyerUnreadMsgRes1.json();
+    assert(buyerUnreadMsgData1.unreadCount === 1, 'Buyer chat icon badge displays unreadCount = 1');
+
     const buyerNotifCountRes = await fetch(`${baseUrl}/notifications/unread-count`, {
       method: 'GET',
       headers: buyerHeaders,
     });
     const buyerNotifCountData = await buyerNotifCountRes.json();
-    assert(buyerNotifCountData.unreadCount >= 1, 'Buyer has unread notifications count >= 1');
+    assert(buyerNotifCountData.unreadCount === 0, 'Notification bell unread count is 0 (chat message NOT in bell)');
 
     const buyerNotifsRes = await fetch(`${baseUrl}/notifications`, {
       method: 'GET',
       headers: buyerHeaders,
     });
     const buyerNotifsData = await buyerNotifsRes.json();
-    assert(buyerNotifsData.success && buyerNotifsData.data?.length >= 1, 'Buyer retrieved notification list');
-    const msgNotification = buyerNotifsData.data.find((n) => n.type === 'MESSAGE');
-    assert(msgNotification && msgNotification.title.includes('Kisan Test Farmer'), 'Message notification title includes sender name');
-    assert(msgNotification && !msgNotification.isRead, 'Notification initially unread');
+    const msgNotification = buyerNotifsData.data?.find((n) => n.type === 'MESSAGE');
+    assert(!msgNotification, 'Chat message notification is NOT displayed in notification bell dropdown');
 
     // 9. Buyer opens conversation: loads messages and marks them as read
     const buyerOpenConvRes = await fetch(`${baseUrl}/messages/conversations/${conversationId}`, {
@@ -182,17 +188,9 @@ async function runMessagingAndNotificationTests() {
       headers: buyerHeaders,
     });
     const buyerUnreadMsgData2 = await buyerUnreadMsgRes2.json();
-    assert(buyerUnreadMsgData2.unreadCount === 0, 'Buyer unread message count is now 0');
+    assert(buyerUnreadMsgData2.unreadCount === 0, 'Buyer unread message count is now 0 after reading');
 
-    // 12. Buyer marks message notification as read
-    const markReadRes = await fetch(`${baseUrl}/notifications/${msgNotification._id}/read`, {
-      method: 'PUT',
-      headers: buyerHeaders,
-    });
-    const markReadData = await markReadRes.json();
-    assert(markReadRes.ok && markReadData.success && markReadData.data?.isRead === true, 'Notification marked as read');
-
-    // 13. Buyer replies to Farmer
+    // 12. Buyer replies to Farmer
     const replyRes = await fetch(`${baseUrl}/messages`, {
       method: 'POST',
       headers: buyerHeaders,
@@ -205,7 +203,7 @@ async function runMessagingAndNotificationTests() {
     const replyData = await replyRes.json();
     assert(replyRes.ok && replyData.success, 'Buyer successfully sent reply message');
 
-    // 14. Farmer checks conversation messages: verifies reply is present
+    // 13. Farmer checks conversation messages: verifies reply is present
     const farmerOpenConvRes = await fetch(`${baseUrl}/messages/conversations/${conversationId}`, {
       method: 'GET',
       headers: farmerHeaders,
@@ -214,15 +212,23 @@ async function runMessagingAndNotificationTests() {
     assert(farmerOpenConvData.data?.length === 2, 'Farmer sees 2 messages in conversation');
     assert(farmerOpenConvData.data[1].text.includes('expected price'), 'Reply message verified');
 
-    // 15. Farmer received notification for Buyer reply
+    // 14. Verify Farmer chat badge is updated, but notification bell does NOT show chat message
+    const farmerUnreadMsgRes = await fetch(`${baseUrl}/messages/unread-count`, {
+      method: 'GET',
+      headers: farmerHeaders,
+    });
+    const farmerUnreadMsgData = await farmerUnreadMsgRes.json();
+    assert(farmerUnreadMsgData.unreadCount === 0, 'Farmer unread count is 0 after opening conversation');
+
     const farmerNotifsRes = await fetch(`${baseUrl}/notifications`, {
       method: 'GET',
       headers: farmerHeaders,
     });
     const farmerNotifsData = await farmerNotifsRes.json();
-    assert(farmerNotifsData.data?.some((n) => n.type === 'MESSAGE' && n.title.includes('Agro Test Buyer')), 'Farmer received notification for Buyer reply');
+    const farmerMsgNotif = farmerNotifsData.data?.find((n) => n.type === 'MESSAGE');
+    assert(!farmerMsgNotif, 'Farmer notification bell does NOT contain chat message notification');
 
-    // 16. Buyer tests markAllNotificationsAsRead
+    // 15. Buyer tests markAllNotificationsAsRead
     const markAllRes = await fetch(`${baseUrl}/notifications/mark-all-read`, {
       method: 'PUT',
       headers: buyerHeaders,

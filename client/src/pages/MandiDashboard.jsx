@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getMyMandi,
@@ -17,8 +18,11 @@ import {
   recordQualityAndWeighing,
   completeMandiSale,
   updateMandiBookingPayment,
+  completeFarmerMandiBooking,
 } from '../services/api';
+import DashboardCard from '../components/DashboardCard';
 import {
+  Sparkles,
   Store,
   TrendingUp,
   Package,
@@ -37,7 +41,35 @@ import {
   FileText,
   ShieldCheck,
   Building,
+  Search,
+  X,
+  Phone,
+  Ticket,
+  ClipboardCheck,
+  Receipt,
+  Trash2,
 } from 'lucide-react';
+
+const getCropEmoji = (cropName) => {
+  const map = {
+    wheat: '🌾',
+    rice: '🍚',
+    paddy: '🌾',
+    maize: '🌽',
+    corn: '🌽',
+    potato: '🥔',
+    mustard: '🟡',
+    cotton: '☁️',
+    sugarcane: '🎋',
+    soybean: '🫘',
+    onion: '🧅',
+    tomato: '🍅',
+    chilli: '🌶️',
+    gram: '🌱',
+    barley: '🌾',
+  };
+  return map[cropName?.toLowerCase()] || '🌱';
+};
 
 const MandiDashboard = () => {
   const { user } = useAuth();
@@ -53,12 +85,14 @@ const MandiDashboard = () => {
   // Bookings state
   const [bookings, setBookings] = useState([]);
   const [bookingFilter, setBookingFilter] = useState('');
+  const [bookingSearch, setBookingSearch] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [actionModalType, setActionModalType] = useState(null); // 'REVIEW', 'ARRIVE', 'QUALITY', 'COMPLETE', 'PAYMENT'
   const [actionLoading, setActionLoading] = useState(false);
 
   // Prices state
   const [prices, setPrices] = useState([]);
+  const [priceSearch, setPriceSearch] = useState('');
   const [showPriceForm, setShowPriceForm] = useState(false);
   const [priceFormError, setPriceFormError] = useState('');
   const [priceFormSuccess, setPriceFormSuccess] = useState('');
@@ -372,6 +406,60 @@ const MandiDashboard = () => {
     }
   };
 
+    const handleQuickAccept = async (bookingId) => {
+    try {
+      setActionLoading(true);
+      const res = await reviewMandiBooking(bookingId, {
+        action: 'ACCEPT',
+        tokenNumber: `TK-${Date.now().toString().slice(-4)}`,
+      });
+      if (res.success) {
+        showToast('Mandi accepted farmer offer! Token issued & Transport unlocked.');
+        fetchData();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to accept booking.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleQuickReject = async (bookingId) => {
+    const reason = window.prompt('Reason for rejecting this offer (optional):', 'Mandi capacity full');
+    if (reason === null) return;
+    try {
+      setActionLoading(true);
+      const res = await reviewMandiBooking(bookingId, {
+        action: 'REJECT',
+        rejectionReason: reason || 'Mandi capacity full',
+      });
+      if (res.success) {
+        showToast('Farmer offer rejected.');
+        fetchData();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to reject booking.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleMarkDelivered = async (bookingId) => {
+    if (!window.confirm('Confirm that this crop produce has arrived at Mandi Yard and mark as Delivered?')) return;
+    try {
+      setActionLoading(true);
+      const res = await completeFarmerMandiBooking(bookingId);
+      if (res.success) {
+        showToast('Crop marked as Delivered & Deal completed!');
+        fetchData();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to mark as delivered.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -500,6 +588,36 @@ const MandiDashboard = () => {
 
   const isVerified = mandi?.verificationStatus === 'VERIFIED';
 
+  // Filtered Bookings for Yard Table
+  const displayBookings = bookings.filter((b) => {
+    if (!b) return false;
+    if (!bookingSearch.trim()) return true;
+    const term = bookingSearch.toLowerCase();
+    const farmerName = (b.farmer?.name || '').toLowerCase();
+    const farmerPhone = (b.farmer?.phone || '').toLowerCase();
+    const cropName = (b.crop || b.cropName || '').toLowerCase();
+    const token = (b.tokenNumber || '').toLowerCase();
+    const bookingNum = (b.bookingNumber || '').toLowerCase();
+    return (
+      farmerName.includes(term) ||
+      farmerPhone.includes(term) ||
+      cropName.includes(term) ||
+      token.includes(term) ||
+      bookingNum.includes(term)
+    );
+  });
+
+  // Filtered Prices
+  const displayPrices = prices.filter((p) => {
+    if (!p) return false;
+    if (!priceSearch.trim()) return true;
+    const term = priceSearch.toLowerCase();
+    const crop = (p.crop || '').toLowerCase();
+    const variety = (p.variety || '').toLowerCase();
+    const grade = (p.qualityGrade || '').toLowerCase();
+    return crop.includes(term) || variety.includes(term) || grade.includes(term);
+  });
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Verification Status Banner */}
@@ -531,98 +649,142 @@ const MandiDashboard = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 text-white p-8 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs font-semibold text-emerald-200 mb-2">
-            <Building className="w-3.5 h-3.5" />
-            <span>{mandi?.mandiType || 'Government'} APMC Yard</span>
-            {isVerified && (
-              <span className="bg-emerald-400 text-emerald-950 font-black px-2 py-0.2 rounded-full text-[10px]">
-                ✓ VERIFIED
-              </span>
-            )}
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            {mandi?.name || 'Mandi Administration Console'}
-          </h1>
-          <p className="text-emerald-100 text-sm mt-1 max-w-2xl">
-            {mandi?.address ? `${mandi.address}, ${mandi.district}, ${mandi.state}` : `${mandi?.district || ''}, ${mandi?.state || ''}`} • Hours: {mandi?.operatingHours || '08:00 AM - 06:00 PM'}
-          </p>
-        </div>
+      {/* 1. Signature Dark Emerald Hero Header Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 p-6 sm:p-10 text-white shadow-2xl border border-emerald-800/40">
+        {/* Ambient Subtle Glow Lights */}
+        <div className="absolute top-0 right-1/4 w-80 h-80 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-10 right-0 w-80 h-80 bg-teal-500/15 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchData}
-            title="Refresh Live Data"
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold border border-white/20 transition active:scale-95"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>Refresh</span>
-          </button>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-3.5 max-w-2xl">
+            <div className="inline-flex items-center space-x-2 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide backdrop-blur-md shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+              <span>APMC Mandi Administration • Gate Operations & Procurement Console 🏛️</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
+                  {mandi?.name || 'Mandi Administration Console'}
+                </h1>
+                {isVerified && (
+                  <span className="bg-emerald-400 text-emerald-950 font-black px-2.5 py-0.5 rounded-full text-xs shadow-sm">
+                    ✓ APMC VERIFIED
+                  </span>
+                )}
+              </div>
+              <p className="text-emerald-100/90 text-sm sm:text-base leading-relaxed font-medium">
+                {mandi?.address ? `${mandi.address}, ${mandi.district}, ${mandi.state}` : `${mandi?.district || ''}, ${mandi?.state || ''}`} • Hours: <strong className="text-white">{mandi?.operatingHours || '08:00 AM - 06:00 PM'}</strong>
+              </p>
+            </div>
+
+            {/* Quick Metrics Bar in Hero */}
+            <div className="pt-2 flex flex-wrap items-center gap-2.5 text-xs">
+              <div className="bg-black/30 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-white/10 flex items-center space-x-2 text-emerald-200">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Pending Approvals: <strong className="text-white text-sm">{stats?.pendingRequests || 0}</strong></span>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-white/10 flex items-center space-x-2 text-emerald-200">
+                <Truck className="w-3.5 h-3.5 text-teal-400" />
+                <span>Today's Arrivals: <strong className="text-teal-300 text-sm">{stats?.arrivedToday || 0}</strong></span>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-white/10 flex items-center space-x-2 text-emerald-200">
+                <Scale className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Procured Volume: <strong className="text-white text-sm">{stats?.totalQuantityPurchasedQuintals || 0} Qtl</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action CTAs */}
+          <div className="relative z-20 flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('prices');
+                setShowPriceForm(true);
+              }}
+              className="inline-flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-lg shadow-emerald-500/25 transition text-xs sm:text-sm active:scale-95"
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>Publish Price</span>
+            </button>
+
+            <Link
+              to="/mandi-offers"
+              className="inline-flex items-center space-x-2 bg-white/15 hover:bg-white/25 text-white font-bold px-4 py-3 rounded-2xl backdrop-blur-md border border-white/20 transition text-xs sm:text-sm"
+            >
+              <Package className="w-4 h-4 text-emerald-300" />
+              <span>Mandi Offers</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={fetchData}
+              className="p-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-2xl backdrop-blur transition"
+              title="Refresh Mandi Data"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs">
           <span>{error}</span>
           <button onClick={() => setError('')} className="text-xs font-bold underline">Dismiss</button>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium">
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold shadow-xs animate-fade-in">
           {successMsg}
         </div>
       )}
 
-      {/* Dashboard Metrics (Actual MongoDB Data) */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold uppercase text-slate-500 block">Total Requests</span>
-          <span className="text-2xl font-black text-slate-900 mt-1 block">
-            {stats?.totalRequests || 0}
-          </span>
-          <span className="text-[11px] text-slate-500 mt-2 block">Crop sale bookings</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold uppercase text-amber-700 block">Pending Review</span>
-          <span className="text-2xl font-black text-amber-700 mt-1 block">
-            {stats?.pendingRequests || 0}
-          </span>
-          <span className="text-[11px] text-amber-800 mt-2 block">Requires scheduling</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold uppercase text-blue-700 block">Accepted & Scheduled</span>
-          <span className="text-2xl font-black text-blue-700 mt-1 block">
-            {stats?.acceptedBookings || 0}
-          </span>
-          <span className="text-[11px] text-blue-800 mt-2 block">Arrival tokens assigned</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold uppercase text-teal-700 block">Today's Arrivals</span>
-          <span className="text-2xl font-black text-teal-700 mt-1 block">
-            {stats?.arrivedToday || 0}
-          </span>
-          <span className="text-[11px] text-teal-800 mt-2 block">Crops in yard</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold uppercase text-emerald-700 block">Purchased Quantity</span>
-          <span className="text-2xl font-black text-emerald-700 mt-1 block">
-            {stats?.totalQuantityPurchasedQuintals || 0} <span className="text-xs font-medium">Qtl</span>
-          </span>
-          <span className="text-[11px] text-emerald-800 mt-2 block">
-            {stats?.completedSales || 0} sales finalized
-          </span>
-        </div>
+      {/* 2. KPI Metrics Row (DashboardCard format matching user screenshot) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+        <DashboardCard
+          title="Total Bookings"
+          value={stats?.totalRequests || bookings.length}
+          subtitle="Crop sale bookings"
+          icon={Package}
+          color="purple"
+        />
+        <DashboardCard
+          title="Pending Review"
+          value={stats?.pendingRequests || 0}
+          subtitle="Requires scheduling"
+          icon={Clock}
+          color="amber"
+        />
+        <DashboardCard
+          title="Scheduled Arrivals"
+          value={stats?.acceptedBookings || 0}
+          subtitle="Arrival tokens assigned"
+          icon={Calendar}
+          color="blue"
+        />
+        <DashboardCard
+          title="Today's Arrivals"
+          value={stats?.arrivedToday || 0}
+          subtitle="Crops in yard"
+          icon={Truck}
+          color="teal"
+        />
+        <DashboardCard
+          title="Procured Volume"
+          value={`${stats?.totalQuantityPurchasedQuintals || 0} Qtl`}
+          subtitle={`${stats?.completedSales || 0} sales finalized`}
+          icon={Scale}
+          color="emerald"
+        />
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+      {/* Tabs Navigation (Exact match to screenshot) */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 p-2.5 sm:p-3 shadow-xs flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-none">
         {[
           { id: 'bookings', label: 'Farmer Sale Requests & Yard Weighing', icon: Package, badge: stats?.pendingRequests },
           { id: 'prices', label: 'Live Mandi Prices', icon: TrendingUp },
@@ -630,20 +792,23 @@ const MandiDashboard = () => {
           { id: 'profile', label: 'Mandi Profile & Hours', icon: Building },
         ].map((t) => {
           const Icon = t.icon;
+          const isActive = activeTab === t.id;
           return (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap ${
-                activeTab === t.id
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100'
+              className={`flex items-center gap-2.5 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                isActive
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
               <span>{t.label}</span>
               {t.badge > 0 && (
-                <span className="bg-white text-emerald-950 font-black px-2 py-0.5 rounded-full text-xs">
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+                }`}>
                   {t.badge}
                 </span>
               )}
@@ -654,235 +819,421 @@ const MandiDashboard = () => {
 
       {/* TAB 1: BOOKINGS & QUALITY WEIGHING */}
       {activeTab === 'bookings' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Crop Sale Bookings & Yard Logistics</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Review farmer requests, assign arrival tokens, perform weighment, record deductions, and settle payments.
-              </p>
+        <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-6">
+          {/* Header & Controls Toolbar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+                <ClipboardCheck className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Crop Sale Bookings & Yard Logistics
+                  </h2>
+                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black px-2.5 py-0.5 rounded-full">
+                    {displayBookings.length} Bookings
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                  Review farmer requests, assign arrival tokens, perform weighment, record deductions, and settle payments.
+                </p>
+              </div>
             </div>
 
-            {/* Filter by status */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">Filter Status:</span>
-              <select
-                value={bookingFilter}
-                onChange={(e) => setBookingFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700"
+            {/* Filter by status, Search & View Cards shortcut */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Live Search input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={bookingSearch}
+                  onChange={(e) => setBookingSearch(e.target.value)}
+                  placeholder="Search farmer, crop, token..."
+                  className="pl-8 pr-7 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none w-44 sm:w-56 transition font-medium"
+                />
+                {bookingSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setBookingSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Select */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-2xs">
+                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <select
+                  value={bookingFilter}
+                  onChange={(e) => setBookingFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                >
+                  <option value="">All Bookings</option>
+                  <option value="PENDING">Pending Review</option>
+                  <option value="ACCEPTED">Accepted / Scheduled</option>
+                  <option value="ARRIVED">Arrived at Yard</option>
+                  <option value="QUALITY_CHECKED">Quality Checked</option>
+                  <option value="COMPLETED">Completed</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
+
+              {/* View Cards Shortcut */}
+              <Link
+                to="/mandi-offers"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition shadow-sm shadow-emerald-600/20 active:scale-95"
               >
-                <option value="">All Bookings</option>
-                <option value="PENDING">Pending Review</option>
-                <option value="ACCEPTED">Accepted / Scheduled</option>
-                <option value="ARRIVED">Arrived at Yard</option>
-                <option value="QUALITY_CHECKED">Quality Checked</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="REJECTED">Rejected</option>
-              </select>
+                <Package className="w-3.5 h-3.5 text-emerald-100" />
+                <span>View Offers Cards</span>
+              </Link>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-y border-slate-200">
-                <tr>
-                  <th className="px-5 py-3.5">Farmer & Token</th>
-                  <th className="px-5 py-3.5">Crop & Quantity</th>
-                  <th className="px-5 py-3.5">Schedule & Arrival</th>
-                  <th className="px-5 py-3.5">Price & Payout</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Workflow Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {bookings.length === 0 ? (
+          {/* Table Container */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200/90 shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-gradient-to-r from-slate-50 via-slate-100/60 to-slate-50 text-[11px] font-black text-slate-600 uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <td colSpan="6" className="px-5 py-10 text-center text-slate-400 text-sm">
-                      No crop sale bookings found matching the filter.
-                    </td>
+                    <th className="px-5 py-3.5">Farmer & Token</th>
+                    <th className="px-5 py-3.5">Crop & Quantity</th>
+                    <th className="px-5 py-3.5">Schedule & Arrival</th>
+                    <th className="px-5 py-3.5">Price & Payout</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-right">Workflow Actions</th>
                   </tr>
-                ) : (
-                  bookings.map((b) => (
-                    <tr key={b._id} className="hover:bg-slate-50/70 transition">
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-slate-900">{b.farmer?.name || 'Farmer'}</div>
-                        <div className="text-xs text-slate-500">{b.farmer?.phone || '—'}</div>
-                        {b.tokenNumber && (
-                          <span className="inline-block mt-1 font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200">
-                            Token: {b.tokenNumber}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-emerald-800">{b.cropName}</div>
-                        <div className="text-xs text-slate-600">
-                          Est: <span className="font-semibold">{b.estimatedQuantity} Qtl</span> ({b.qualityGrade})
-                        </div>
-                        {b.actualQuantity && (
-                          <div className="text-xs text-teal-700 font-bold mt-0.5">
-                            Weighed: {b.actualQuantity} Qtl ({b.cropQualityGrade || b.qualityGrade})
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {displayBookings.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="px-5 py-12 text-center">
+                        <div className="max-w-xs mx-auto space-y-2">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                            <Package className="w-6 h-6" />
                           </div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-xs text-slate-600">
-                        {b.scheduledArrivalDate ? (
-                          <div>
-                            <span className="font-semibold text-slate-800">
-                              {new Date(b.scheduledArrivalDate).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="italic text-slate-400">Preferred: {new Date(b.preferredArrivalDate).toLocaleDateString()}</span>
-                        )}
-                        {b.actualArrivalTime && (
-                          <div className="text-[11px] text-teal-700 mt-0.5">
-                            Arrived: {new Date(b.actualArrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="text-xs text-slate-800">
-                          Rate: <span className="font-bold">₹{b.agreedPricePerQuintal || b.proposedPricePerQuintal || b.expectedPricePerQuintal}/Qtl</span>
-                        </div>
-                        {b.finalPayableAmount > 0 && (
-                          <div className="text-xs font-black text-emerald-700 mt-0.5">
-                            Total: ₹{b.finalPayableAmount.toLocaleString()}
-                          </div>
-                        )}
-                        <span className={`inline-block text-[10px] font-bold px-1.5 py-0.2 rounded mt-1 ${
-                          b.paymentStatus === 'PAID'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          Payment: {b.paymentStatus}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border ${
-                          b.status === 'COMPLETED'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : b.status === 'REJECTED'
-                            ? 'bg-red-50 text-red-800 border-red-200'
-                            : b.status === 'QUALITY_CHECKED'
-                            ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                            : b.status === 'ARRIVED'
-                            ? 'bg-teal-50 text-teal-800 border-teal-200'
-                            : b.status === 'ACCEPTED'
-                            ? 'bg-blue-50 text-blue-800 border-blue-200'
-                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                        }`}>
-                          {b.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                          {b.status === 'PENDING' && (
+                          <div className="font-bold text-slate-800 text-sm">No Crop Sale Bookings Found</div>
+                          <p className="text-xs text-slate-500">
+                            {bookingSearch
+                              ? `No bookings matched "${bookingSearch}". Try adjusting your search query.`
+                              : 'No bookings found under the selected status filter.'}
+                          </p>
+                          {(bookingSearch || bookingFilter) && (
                             <button
                               type="button"
-                              onClick={() => openActionModal('REVIEW', b)}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                              onClick={() => {
+                                setBookingSearch('');
+                                setBookingFilter('');
+                              }}
+                              className="text-xs font-bold text-emerald-700 hover:underline pt-1 inline-block"
                             >
-                              Review & Schedule
+                              Reset filters
                             </button>
-                          )}
-
-                          {b.status === 'ACCEPTED' && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal('ARRIVE', b)}
-                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                            >
-                              Mark Arrived
-                            </button>
-                          )}
-
-                          {b.status === 'ARRIVED' && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal('QUALITY', b)}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                            >
-                              Weigh & Grade
-                            </button>
-                          )}
-
-                          {b.status === 'QUALITY_CHECKED' && (
-                            <button
-                              type="button"
-                              onClick={() => handleCompleteSaleSubmit(b._id)}
-                              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                            >
-                              Complete Sale
-                            </button>
-                          )}
-
-                          {b.status === 'COMPLETED' && b.paymentStatus === 'PENDING' && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal('PAYMENT', b)}
-                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                            >
-                              Record Payment
-                            </button>
-                          )}
-
-                          {b.paymentStatus === 'PAID' && (
-                            <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-4 h-4" /> Settled
-                            </span>
                           )}
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    displayBookings.map((b) => (
+                      <tr key={b._id} className="hover:bg-emerald-50/40 transition-colors duration-150 group">
+                        {/* FARMER & TOKEN */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-sm flex items-center justify-center shadow-xs shrink-0 ring-2 ring-emerald-500/20">
+                              {(b.farmer?.name || 'F').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-black text-slate-900 group-hover:text-emerald-950 text-sm">
+                                {b.farmer?.name || 'Farmer'}
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-slate-500 font-medium mt-0.5">
+                                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{b.farmer?.phone || '—'}</span>
+                              </div>
+                              {b.tokenNumber ? (
+                                <div className="mt-1.5 inline-flex items-center gap-1 font-mono text-[11px] bg-slate-900 text-emerald-300 font-bold px-2 py-0.5 rounded-lg shadow-2xs">
+                                  <Ticket className="w-3 h-3 text-emerald-400" />
+                                  <span>Token: {b.tokenNumber}</span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic block mt-1">No token assigned</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* CROP & QUANTITY */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-start gap-2.5">
+                            <span className="text-2xl leading-none mt-0.5">{getCropEmoji(b.crop || b.cropName)}</span>
+                            <div>
+                              <div className="font-black text-slate-900 text-sm">
+                                {b.crop || b.cropName || 'Crop Produce'}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="text-xs text-slate-600 font-medium">
+                                  Est: <strong className="text-slate-900 font-bold">{b.quantity || b.estimatedQuantity || 0} Qtl</strong>
+                                </span>
+                                <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-bold">
+                                  {b.qualityGrade || 'Grade A'}
+                                </span>
+                              </div>
+                              {b.actualQuantity && (
+                                <div className="inline-flex items-center gap-1 text-[11px] text-teal-800 font-black mt-1 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                                  <Scale className="w-3 h-3 text-teal-600" />
+                                  <span>Weighed: {b.actualQuantity} Qtl ({b.cropQualityGrade || b.qualityGrade})</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* SCHEDULE & ARRIVAL */}
+                        <td className="px-5 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                              <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>
+                                {b.scheduledArrivalDate 
+                                  ? new Date(b.scheduledArrivalDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                                  : <span className="italic text-slate-500 font-normal">Pref: {new Date(b.preferredArrivalDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                }
+                              </span>
+                            </div>
+                            {b.actualArrivalTime ? (
+                              <div className="inline-flex items-center gap-1 text-[11px] text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded font-bold">
+                                <Clock className="w-3 h-3 text-teal-600" />
+                                <span>Arrived: {new Date(b.actualArrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-slate-400 font-medium">Awaiting arrival</div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* PRICE & PAYOUT */}
+                        <td className="px-5 py-4">
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-700">
+                              Rate: <strong className="text-slate-900 font-black">₹{(b.acceptedPricePerQuintal || b.proposedPrice || b.expectedPrice || b.agreedPricePerQuintal || b.proposedPricePerQuintal || b.expectedPricePerQuintal || 0).toLocaleString()}</strong> / Qtl
+                            </div>
+                            {b.finalPayableAmount > 0 ? (
+                              <div className="text-xs font-black text-emerald-700">
+                                Total: ₹{b.finalPayableAmount.toLocaleString()}
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-slate-400">Total pending weighment</div>
+                            )}
+                            <div>
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                b.paymentStatus === 'PAID'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : 'bg-amber-50 text-amber-800 border-amber-300'
+                              }`}>
+                                {b.paymentStatus === 'PAID' ? <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> : <Clock className="w-2.5 h-2.5 text-amber-600" />}
+                                <span>Payment: {b.paymentStatus || 'PENDING'}</span>
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* STATUS */}
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border shadow-2xs ${
+                            b.status === 'COMPLETED'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-black'
+                              : b.status === 'REJECTED'
+                              ? 'bg-rose-50 text-rose-800 border-rose-300 font-black'
+                              : b.status === 'QUALITY_CHECKED'
+                              ? 'bg-indigo-50 text-indigo-800 border-indigo-300 font-black'
+                              : b.status === 'ARRIVED'
+                              ? 'bg-teal-50 text-teal-800 border-teal-300 font-black'
+                              : b.status === 'ACCEPTED'
+                              ? 'bg-blue-50 text-blue-800 border-blue-300 font-black'
+                              : 'bg-amber-50 text-amber-800 border-amber-300 font-black'
+                          }`}>
+                            {b.status === 'COMPLETED' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                            {b.status === 'PENDING' && <Clock className="w-3.5 h-3.5 text-amber-600" />}
+                            {b.status === 'ARRIVED' && <Truck className="w-3.5 h-3.5 text-teal-600" />}
+                            {b.status === 'QUALITY_CHECKED' && <Scale className="w-3.5 h-3.5 text-indigo-600" />}
+                            {b.status === 'REJECTED' && <XCircle className="w-3.5 h-3.5 text-rose-600" />}
+                            {b.status === 'ACCEPTED' && <Calendar className="w-3.5 h-3.5 text-blue-600" />}
+                            <span>{b.status}</span>
+                          </span>
+                        </td>
+
+                        {/* WORKFLOW ACTIONS */}
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {b.status === 'PENDING' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAccept(b._id)}
+                                  disabled={actionLoading}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Accept</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickReject(b._id)}
+                                  disabled={actionLoading}
+                                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition active:scale-95 flex items-center gap-1"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openActionModal('REVIEW', b)}
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition active:scale-95"
+                                >
+                                  Schedule
+                                </button>
+                              </>
+                            )}
+
+                            {(b.status === 'ACCEPTED' || b.status === 'SCHEDULED' || b.status === 'ARRIVED' || b.status === 'QUALITY_CHECKED') && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkDelivered(b._id)}
+                                disabled={actionLoading}
+                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Mark as Delivered</span>
+                              </button>
+                            )}
+
+                            {b.status === 'ARRIVED' && (
+                              <button
+                                type="button"
+                                onClick={() => openActionModal('QUALITY', b)}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-xs active:scale-95"
+                              >
+                                Weigh & Grade
+                              </button>
+                            )}
+
+                            {b.status === 'QUALITY_CHECKED' && (
+                              <button
+                                type="button"
+                                onClick={() => handleCompleteSaleSubmit(b._id)}
+                                className="px-3 py-1.5 bg-teal-700 hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition shadow-xs active:scale-95"
+                              >
+                                Complete Sale
+                              </button>
+                            )}
+
+                            {b.status === 'COMPLETED' && (
+                              <span className="text-xs text-emerald-800 font-extrabold flex items-center gap-1.5 bg-emerald-50/90 px-3 py-1.5 rounded-xl border border-emerald-300/80 shadow-2xs">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                <span>Delivered & Settled</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {/* TAB 2: LIVE MANDI PRICES */}
       {activeTab === 'prices' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Live Mandi Prices & Daily Rates</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Update crop-wise Min, Max, and Modal prices. All entered prices are verified and published directly from this Mandi yard.
-              </p>
+        <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-6">
+          {/* Header & Controls Toolbar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+                <TrendingUp className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Live Mandi Prices & Daily Rates
+                  </h2>
+                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black px-2.5 py-0.5 rounded-full">
+                    {displayPrices.length} Rates
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                  Update crop-wise Min, Max, and Modal prices. All entered prices are verified and published directly from this Mandi yard.
+                </p>
+              </div>
             </div>
 
-            <button
-              onClick={() => {
-                setShowPriceForm((prev) => !prev);
-                setPriceFormError('');
-                setPriceFormSuccess('');
-              }}
-              disabled={!isVerified}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-sm ${
-                isVerified
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>Publish Today's Rate</span>
-            </button>
+            {/* Toolbar: Search & Publish CTA */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Search input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={priceSearch}
+                  onChange={(e) => setPriceSearch(e.target.value)}
+                  placeholder="Search crop or variety..."
+                  className="pl-8 pr-7 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none w-44 sm:w-56 transition font-medium"
+                />
+                {priceSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setPriceSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Publish Rate CTA */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPriceForm((prev) => !prev);
+                  setPriceFormError('');
+                  setPriceFormSuccess('');
+                }}
+                disabled={!isVerified}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-sm active:scale-95 ${
+                  isVerified
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/25'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Plus className="w-4 h-4" />
+                <span>Publish Today's Rate</span>
+              </button>
+            </div>
           </div>
 
           {!isVerified && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-medium">
-              Notice: Price updating is disabled until your Mandi account has been verified by the administrator.
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs sm:text-sm text-amber-900 font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Notice: Price updating is disabled until your Mandi account has been verified by the administrator.</span>
             </div>
           )}
 
-          {/* New Price Form */}
+          {/* New Price Form Modal/Expandable */}
           {showPriceForm && (
-            <form onSubmit={handleCreatePrice} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-sm text-slate-900">Publish New Daily Rate</h3>
-                <span className="text-[11px] text-slate-500">* All price fields are in ₹ per quintal</span>
+            <form onSubmit={handleCreatePrice} className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-2xs">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                    ₹
+                  </div>
+                  <h3 className="font-black text-sm sm:text-base text-slate-900">Publish New Daily Rate</h3>
+                </div>
+                <span className="text-[11px] text-slate-500 font-semibold">* All price fields are in ₹ per quintal</span>
               </div>
 
               {/* In-form Success Alert */}
@@ -912,32 +1263,32 @@ const MandiDashboard = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Crop Name *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Crop Name *</label>
                   <input
                     type="text"
                     required
                     value={priceFormData.crop}
                     onChange={(e) => setPriceFormData({ ...priceFormData, crop: e.target.value })}
                     placeholder="e.g. Wheat, Soybean, Mustard"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Variety (Optional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Variety (Optional)</label>
                   <input
                     type="text"
                     value={priceFormData.variety}
                     onChange={(e) => setPriceFormData({ ...priceFormData, variety: e.target.value })}
                     placeholder="e.g. Sharbati, Lok-1"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Quality Grade</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Quality Grade</label>
                   <select
                     value={priceFormData.qualityGrade}
                     onChange={(e) => setPriceFormData({ ...priceFormData, qualityGrade: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   >
                     <option value="Grade A">Grade A (Premium)</option>
                     <option value="Grade B">Grade B (Standard)</option>
@@ -949,7 +1300,7 @@ const MandiDashboard = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Min Price (₹/Quintal) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Min Price (₹/Quintal) *</label>
                   <input
                     type="number"
                     required
@@ -957,11 +1308,11 @@ const MandiDashboard = () => {
                     value={priceFormData.minPrice}
                     onChange={(e) => setPriceFormData({ ...priceFormData, minPrice: e.target.value })}
                     placeholder="e.g. 2350"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Max Price (₹/Quintal) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Max Price (₹/Quintal) *</label>
                   <input
                     type="number"
                     required
@@ -969,11 +1320,11 @@ const MandiDashboard = () => {
                     value={priceFormData.maxPrice}
                     onChange={(e) => setPriceFormData({ ...priceFormData, maxPrice: e.target.value })}
                     placeholder="e.g. 2650"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Modal Price (₹/Quintal) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Modal Price (₹/Quintal) *</label>
                   <input
                     type="number"
                     required
@@ -981,7 +1332,7 @@ const MandiDashboard = () => {
                     value={priceFormData.modalPrice}
                     onChange={(e) => setPriceFormData({ ...priceFormData, modalPrice: e.target.value })}
                     placeholder="e.g. 2500"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
               </div>
@@ -1010,85 +1361,160 @@ const MandiDashboard = () => {
             </form>
           )}
 
-          {/* Price List */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-y border-slate-200">
-                <tr>
-                  <th className="px-5 py-3.5">Crop & Variety</th>
-                  <th className="px-5 py-3.5">Quality Grade</th>
-                  <th className="px-5 py-3.5">Min - Max Price</th>
-                  <th className="px-5 py-3.5">Modal Price</th>
-                  <th className="px-5 py-3.5">Price Source</th>
-                  <th className="px-5 py-3.5">Reported Date</th>
-                  <th className="px-5 py-3.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {prices.length === 0 ? (
+          {/* Price Table Container */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200/90 shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-gradient-to-r from-slate-50 via-slate-100/60 to-slate-50 text-[11px] font-black text-slate-600 uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <td colSpan="7" className="px-5 py-8 text-center text-slate-400 text-sm">
-                      No live price entries published yet. Click "Publish Today's Rate" above to publish actual mandi rates.
-                    </td>
+                    <th className="px-5 py-3.5">Crop & Variety</th>
+                    <th className="px-5 py-3.5">Quality Grade</th>
+                    <th className="px-5 py-3.5">Min - Max Price</th>
+                    <th className="px-5 py-3.5">Modal Price</th>
+                    <th className="px-5 py-3.5">Price Source</th>
+                    <th className="px-5 py-3.5">Reported Date</th>
+                    <th className="px-5 py-3.5 text-right">Action</th>
                   </tr>
-                ) : (
-                  prices.map((p) => (
-                    <tr key={p._id} className="hover:bg-slate-50/70 transition">
-                      <td className="px-5 py-4 font-bold text-slate-900">
-                        {p.crop} {p.variety ? `(${p.variety})` : ''}
-                      </td>
-                      <td className="px-5 py-4 text-xs text-slate-700">
-                        {p.qualityGrade || 'Standard'}
-                      </td>
-                      <td className="px-5 py-4 text-xs font-semibold text-slate-800">
-                        ₹{p.minPrice} - ₹{p.maxPrice} / Qtl
-                      </td>
-                      <td className="px-5 py-4 font-black text-emerald-700">
-                        ₹{p.modalPrice} / Qtl
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          {p.priceSource || 'MANDI_ADMIN'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-xs text-slate-500">
-                        {new Date(p.date || p.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePrice(p._id)}
-                          className="text-xs text-red-600 hover:text-red-800 font-semibold"
-                        >
-                          Delete
-                        </button>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {displayPrices.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-5 py-12 text-center">
+                        <div className="max-w-xs mx-auto space-y-2">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                            <TrendingUp className="w-6 h-6" />
+                          </div>
+                          <div className="font-bold text-slate-800 text-sm">No Live Prices Found</div>
+                          <p className="text-xs text-slate-500">
+                            {priceSearch
+                              ? `No prices matched "${priceSearch}". Try adjusting your search query.`
+                              : 'No live price entries published yet. Click "Publish Today\'s Rate" above to publish actual rates.'}
+                          </p>
+                          {priceSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setPriceSearch('')}
+                              className="text-xs font-bold text-emerald-700 hover:underline pt-1 inline-block"
+                            >
+                              Reset search
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    displayPrices.map((p) => (
+                      <tr key={p._id} className="hover:bg-emerald-50/40 transition-colors duration-150 group">
+                        {/* CROP & VARIETY */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-2xl leading-none">{getCropEmoji(p.crop)}</span>
+                            <div>
+                              <div className="font-black text-slate-900 group-hover:text-emerald-950 text-sm">
+                                {p.crop}
+                              </div>
+                              {p.variety ? (
+                                <span className="inline-block mt-0.5 bg-slate-100 text-slate-700 font-bold text-[10px] px-1.5 py-0.2 rounded border border-slate-200">
+                                  {p.variety}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">Standard Variety</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* QUALITY GRADE */}
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                            <Award className="w-3 h-3 text-emerald-600" />
+                            <span>{p.qualityGrade || 'Grade A'}</span>
+                          </span>
+                        </td>
+
+                        {/* MIN - MAX PRICE */}
+                        <td className="px-5 py-4">
+                          <div className="text-xs font-bold text-slate-800">
+                            ₹{Number(p.minPrice || 0).toLocaleString()} – ₹{Number(p.maxPrice || 0).toLocaleString()} <span className="text-slate-500 font-normal">/ Qtl</span>
+                          </div>
+                        </td>
+
+                        {/* MODAL PRICE */}
+                        <td className="px-5 py-4">
+                          <div className="inline-flex items-center gap-1 text-xs font-black bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-200/80 shadow-2xs">
+                            <span>₹{Number(p.modalPrice || 0).toLocaleString()}</span>
+                            <span className="text-[10px] text-emerald-600 font-semibold">/ Qtl</span>
+                          </div>
+                        </td>
+
+                        {/* PRICE SOURCE */}
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-slate-900 text-emerald-300 font-mono shadow-2xs">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            <span>{p.priceSource || 'MANDI_ENTRY'}</span>
+                          </span>
+                        </td>
+
+                        {/* REPORTED DATE */}
+                        <td className="px-5 py-4 text-xs text-slate-600 font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{new Date(p.date || p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          </div>
+                        </td>
+
+                        {/* ACTION */}
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePrice(p._id)}
+                            className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg font-bold transition active:scale-95"
+                            title="Delete this price entry"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {/* TAB 3: PROCUREMENT DEMAND */}
       {activeTab === 'demands' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Mandi Procurement Demand</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Publish crops your Mandi yard is actively procuring so farmers can book guaranteed sale slots.
-              </p>
+        <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+                <Store className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Mandi Procurement Demand
+                  </h2>
+                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black px-2.5 py-0.5 rounded-full">
+                    {demands.length} Demands
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                  Publish crops your Mandi yard is actively procuring so farmers can book guaranteed sale slots.
+                </p>
+              </div>
             </div>
 
             <button
+              type="button"
               onClick={() => setShowDemandForm((prev) => !prev)}
               disabled={!isVerified}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-sm ${
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-sm active:scale-95 ${
                 isVerified
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/25'
                   : 'bg-slate-200 text-slate-500 cursor-not-allowed'
               }`}
             >
@@ -1098,22 +1524,22 @@ const MandiDashboard = () => {
           </div>
 
           {showDemandForm && (
-            <form onSubmit={handleCreateDemand} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
-              <h3 className="font-bold text-sm text-slate-900">New Procurement Requirement</h3>
+            <form onSubmit={handleCreateDemand} className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-2xs">
+              <h3 className="font-black text-sm sm:text-base text-slate-900">New Procurement Requirement</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Crop *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Crop *</label>
                   <input
                     type="text"
                     required
                     value={demandFormData.crop}
                     onChange={(e) => setDemandFormData({ ...demandFormData, crop: e.target.value })}
                     placeholder="e.g. Wheat, Gram, Mustard"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Required Quantity (Quintals) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Required Quantity (Quintals) *</label>
                   <input
                     type="number"
                     required
@@ -1121,38 +1547,38 @@ const MandiDashboard = () => {
                     value={demandFormData.requiredQuantity}
                     onChange={(e) => setDemandFormData({ ...demandFormData, requiredQuantity: e.target.value })}
                     placeholder="e.g. 500"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Expected Price Range (₹/Qtl)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Expected Price Range (₹/Qtl)</label>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       placeholder="Min ₹"
                       value={demandFormData.minExpectedPrice}
                       onChange={(e) => setDemandFormData({ ...demandFormData, minExpectedPrice: e.target.value })}
-                      className="w-1/2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                      className="w-1/2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                     <input
                       type="number"
                       placeholder="Max ₹"
                       value={demandFormData.maxExpectedPrice}
                       onChange={(e) => setDemandFormData({ ...demandFormData, maxExpectedPrice: e.target.value })}
-                      className="w-1/2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                      className="w-1/2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Quality Requirements & Guidelines</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Quality Requirements & Guidelines</label>
                 <textarea
                   rows="2"
                   value={demandFormData.qualityRequirements}
                   onChange={(e) => setDemandFormData({ ...demandFormData, qualityRequirements: e.target.value })}
                   placeholder="e.g. Clean dry grains, foreign matter below 2%, moisture max 12%"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
 
@@ -1160,14 +1586,14 @@ const MandiDashboard = () => {
                 <button
                   type="button"
                   onClick={() => setShowDemandForm(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition active:scale-95"
                 >
                   {actionLoading ? 'Publishing...' : 'Publish Demand'}
                 </button>
@@ -1176,60 +1602,83 @@ const MandiDashboard = () => {
           )}
 
           {/* Demands Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {demands.length === 0 ? (
-              <div className="col-span-full py-8 text-center text-slate-400 text-sm">
-                No active procurement demands posted yet.
+              <div className="col-span-full py-12 text-center">
+                <div className="max-w-xs mx-auto space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                    <Store className="w-6 h-6" />
+                  </div>
+                  <div className="font-bold text-slate-800 text-sm">No Active Demands</div>
+                  <p className="text-xs text-slate-500">
+                    No active procurement demands posted yet. Click "Create Demand Listing" above to announce procurement requirements.
+                  </p>
+                </div>
               </div>
             ) : (
-              demands.map((d) => (
-                <div key={d._id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base text-slate-900">{d.crop}</h3>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      d.status === 'OPEN'
-                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        : d.status === 'FULFILLED'
-                        ? 'bg-blue-100 text-blue-800 border-blue-300'
-                        : 'bg-slate-100 text-slate-700 border-slate-300'
-                    }`}>
-                      {d.status}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 text-xs text-slate-600">
-                    <div>
-                      Target Quantity: <span className="font-bold text-slate-900">{d.requiredQuantity} Qtl</span>
-                    </div>
-                    <div>
-                      Purchased: <span className="font-bold text-teal-700">{d.purchasedQuantity || 0} Qtl</span>
-                    </div>
-                    {d.minExpectedPrice && d.maxExpectedPrice && (
-                      <div>
-                        Rate: <span className="font-bold text-emerald-700">₹{d.minExpectedPrice} - ₹{d.maxExpectedPrice} / Qtl</span>
+              demands.map((d) => {
+                const pct = Math.min(100, Math.round(((d.purchasedQuantity || 0) / (d.requiredQuantity || 1)) * 100));
+                return (
+                  <div key={d._id} className="p-5 rounded-3xl border border-slate-200/90 bg-white hover:shadow-md transition-all duration-200 space-y-4 group">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl leading-none">{getCropEmoji(d.crop)}</span>
+                        <h3 className="font-black text-base text-slate-900 group-hover:text-emerald-950">{d.crop}</h3>
                       </div>
-                    )}
-                    <p className="text-[11px] text-slate-500 pt-1 line-clamp-2">{d.qualityRequirements}</p>
-                  </div>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
+                        d.status === 'OPEN'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : d.status === 'FULFILLED'
+                          ? 'bg-blue-50 text-blue-800 border-blue-300'
+                          : 'bg-slate-100 text-slate-700 border-slate-300'
+                      }`}>
+                        {d.status}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateDemandStatus(d._id, d.status === 'OPEN' ? 'FULFILLED' : 'OPEN')}
-                      className="text-xs font-bold text-emerald-700 hover:text-emerald-900"
-                    >
-                      Mark {d.status === 'OPEN' ? 'Fulfilled' : 'Open'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteDemand(d._id)}
-                      className="text-xs font-semibold text-red-600 hover:text-red-800"
-                    >
-                      Delete
-                    </button>
+                    {/* Progress Bar */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs font-bold text-slate-700">
+                        <span>Procured: <strong className="text-emerald-700">{d.purchasedQuantity || 0} Qtl</strong></span>
+                        <span className="text-slate-500">Target: {d.requiredQuantity} Qtl</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                      {d.minExpectedPrice && d.maxExpectedPrice && (
+                        <div>
+                          Offer Rate: <strong className="text-emerald-700 font-bold">₹{d.minExpectedPrice} - ₹{d.maxExpectedPrice} / Qtl</strong>
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">{d.qualityRequirements}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateDemandStatus(d._id, d.status === 'OPEN' ? 'FULFILLED' : 'OPEN')}
+                        className="text-xs font-bold text-emerald-700 hover:text-emerald-900 transition"
+                      >
+                        Mark {d.status === 'OPEN' ? 'Fulfilled' : 'Open'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDemand(d._id)}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-800 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -1237,88 +1686,97 @@ const MandiDashboard = () => {
 
       {/* TAB 4: MANDI PROFILE */}
       {activeTab === 'profile' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Mandi Details & Operating Hours</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Keep your contact information, market yard timings, and supported crops updated for farmers.
-            </p>
+        <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-6">
+          <div className="flex items-start gap-3.5 pb-5 border-b border-slate-100">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+              <Building className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Mandi Details & Operating Hours
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                Keep your contact information, market yard timings, and supported crops updated for farmers.
+              </p>
+            </div>
           </div>
 
-          <form onSubmit={handleSaveProfile} className="space-y-4 max-w-2xl">
+          <form onSubmit={handleSaveProfile} className="space-y-5 max-w-2xl">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Mandi Name</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mandi Name</label>
                 <input
                   type="text"
                   disabled
                   value={mandi?.name || ''}
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-600 cursor-not-allowed"
+                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-600 cursor-not-allowed font-medium"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Mandi Type</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mandi Type</label>
                 <input
                   type="text"
                   disabled
-                  value={mandi?.mandiType || 'Government'}
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-600 cursor-not-allowed"
+                  value={mandi?.mandiType || 'Government APMC'}
+                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-600 cursor-not-allowed font-medium"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Operating Hours</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Operating Hours</label>
                 <input
                   type="text"
                   value={mandiEditData.operatingHours}
                   onChange={(e) => setMandiEditData({ ...mandiEditData, operatingHours: e.target.value })}
                   placeholder="08:00 AM - 06:00 PM"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Contact Phone</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Contact Phone</label>
                 <input
                   type="tel"
                   value={mandiEditData.contactPhone}
                   onChange={(e) => setMandiEditData({ ...mandiEditData, contactPhone: e.target.value })}
                   placeholder="e.g. 9876543210"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Yard Address / Gate Details</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Yard Address / Gate Details</label>
               <input
                 type="text"
                 value={mandiEditData.address}
                 onChange={(e) => setMandiEditData({ ...mandiEditData, address: e.target.value })}
                 placeholder="Market Yard Road, Gate 3"
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Crops Procured (comma-separated)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Crops Procured (comma-separated)</label>
               <input
                 type="text"
                 value={mandiEditData.cropsSupported}
                 onChange={(e) => setMandiEditData({ ...mandiEditData, cropsSupported: e.target.value })}
                 placeholder="Wheat, Rice, Soybean, Mustard, Maize"
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={actionLoading}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
-            >
-              {actionLoading ? 'Saving...' : 'Save Profile Changes'}
-            </button>
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/25 active:scale-95 transition"
+              >
+                {actionLoading ? 'Saving...' : 'Save Profile Changes'}
+              </button>
+            </div>
           </form>
         </div>
       )}

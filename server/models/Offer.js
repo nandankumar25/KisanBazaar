@@ -68,9 +68,14 @@ const offerSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['PENDING', 'ACCEPTED', 'REJECTED', 'COUNTERED', 'CANCELLED'],
+        values: ['PENDING', 'ACCEPTED', 'REJECTED', 'COUNTERED', 'CANCELLED', 'COMPLETED'],
         message: '{VALUE} is not a valid offer status',
       },
+      default: 'PENDING',
+    },
+    deliveryStatus: {
+      type: String,
+      enum: ['PENDING', 'DELIVERED', 'COMPLETED'],
       default: 'PENDING',
     },
     lastActionBy: {

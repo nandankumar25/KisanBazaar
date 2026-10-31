@@ -7,3 +7,122 @@
     @apply min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased;
   }
 }
+
+/* Farming Banner Animation Keyframes */
+@keyframes farm-sway {
+  0%, 100% {
+    transform: rotate(-3.5deg);
+  }
+  50% {
+    transform: rotate(4.5deg);
+  }
+}
+
+@keyframes farm-sway-slow {
+  0%, 100% {
+    transform: rotate(-5deg) scale(0.98);
+  }
+  50% {
+    transform: rotate(3.5deg) scale(1.02);
+  }
+}
+
+@keyframes farm-sway-fast {
+  0%, 100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes farm-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes farm-sun-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes farm-leaf-float-1 {
+  0% {
+    transform: translate(0, 15px) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(25px, -45px) rotate(40deg);
+    opacity: 0;
+  }
+}
+
+@keyframes farm-leaf-float-2 {
+  0% {
+    transform: translate(0, 20px) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.8;
+  }
+  75% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-30px, -50px) rotate(-35deg);
+    opacity: 0;
+  }
+}
+
+.animate-farm-sway {
+  animation: farm-sway 3.2s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.animate-farm-sway-slow {
+  animation: farm-sway-slow 4.8s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.animate-farm-sway-fast {
+  animation: farm-sway-fast 2.4s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.animate-farm-float {
+  animation: farm-float 3.5s ease-in-out infinite;
+}
+
+.animate-farm-sun-pulse {
+  animation: farm-sun-pulse 4s ease-in-out infinite;
+}
+
+.animate-farm-leaf-1 {
+  animation: farm-leaf-float-1 5s ease-in-out infinite;
+}
+
+.animate-farm-leaf-2 {
+  animation: farm-leaf-float-2 6.5s ease-in-out infinite 1.5s;
+}
+
+.animate-spin-windmill {
+  animation: spin 8s linear infinite;
+  transform-origin: center center;
+}
+

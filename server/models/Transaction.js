@@ -31,10 +31,17 @@ const transactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Offer',
     },
+    mandiBooking: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MandiBooking',
+    },
+    mandi: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Mandi',
+    },
     cropLot: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'CropLot',
-      required: [true, 'CropLot reference is required'],
     },
     farmer: {
       type: mongoose.Schema.Types.ObjectId,
@@ -44,7 +51,6 @@ const transactionSchema = new mongoose.Schema(
     buyer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'Buyer reference is required'],
     },
     quantity: {
       type: Number,

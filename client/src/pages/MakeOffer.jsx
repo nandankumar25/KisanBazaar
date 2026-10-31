@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { getCropLotById, createOffer } from '../services/api';
 import { 
   Package, 
@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 const MakeOffer = () => {
   const { user } = useAuth();
   const { cropLotId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [cropLot, setCropLot] = useState(null);
@@ -25,7 +26,8 @@ const MakeOffer = () => {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const demoBuyerId = user?._id || import.meta.env.VITE_DEMO_BUYER_ID;
+  const targetBuyerId = searchParams.get('buyerId');
+  const demoBuyerId = user?.role === 'BUYER' ? user._id : (targetBuyerId || import.meta.env.VITE_DEMO_BUYER_ID || user?._id);
 
 
   // Form State
@@ -106,7 +108,11 @@ const MakeOffer = () => {
       if (res.success) {
         setSuccessMsg('Offer submitted successfully.');
         setTimeout(() => {
-          navigate('/my-offers');
+          if (user?.role === 'FARMER') {
+            navigate('/offers');
+          } else {
+            navigate('/my-offers');
+          }
         }, 1200);
       }
     } catch (err) {

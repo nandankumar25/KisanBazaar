@@ -209,8 +209,9 @@ const TransactionDetails = () => {
     switch (st) {
       case 'COMPLETED':
         return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
-            Completed
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Delivered</span>
           </span>
         );
       case 'IN_PROGRESS':
@@ -234,6 +235,40 @@ const TransactionDetails = () => {
         );
     }
   };
+
+  const isDelivered =
+    transaction?.transactionStatus === 'COMPLETED' ||
+    transaction?.offer?.status === 'COMPLETED';
+
+  if (!isDelivered) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-200">
+            <Clock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Deal Still In Progress</h2>
+          <p className="text-sm text-slate-600 mb-6 max-w-md mx-auto">
+            This deal is currently in progress. Complete details, payment ledger, and receipts become accessible only once the crops have been successfully delivered.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => navigate('/transactions')}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
+            >
+              Back to Deals
+            </button>
+            <Link
+              to="/offers"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-sm"
+            >
+              View Offers & Delivery
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

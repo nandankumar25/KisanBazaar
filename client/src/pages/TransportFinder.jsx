@@ -24,6 +24,7 @@ const TransportFinder = () => {
 
   const queryParams = new URLSearchParams(location.search);
   const preSelectedLotId = queryParams.get('cropLot');
+  const queryOfferId = queryParams.get('offerId') || '';
   const queryDestination = queryParams.get('destination');
   const queryDistance = queryParams.get('distance');
 
@@ -60,14 +61,14 @@ const TransportFinder = () => {
         setLoadingLots(true);
         let res = null;
         if (user?.role === 'FARMER' && user?._id) {
-          res = await getCropLots({ farmer: user._id, status: 'AVAILABLE' });
+          res = await getCropLots({ farmer: user._id });
         } else if (demoFarmerId) {
-          res = await getCropLots({ farmer: demoFarmerId, status: 'AVAILABLE' });
+          res = await getCropLots({ farmer: demoFarmerId });
         }
 
         let lots = res?.data || [];
         if (lots.length === 0) {
-          const fallbackRes = await getCropLots({ status: 'AVAILABLE' });
+          const fallbackRes = await getCropLots();
           lots = fallbackRes?.data || [];
         }
 
@@ -75,8 +76,11 @@ const TransportFinder = () => {
 
         if (preSelectedLotId) {
           const matched = lots.find((l) => l._id === preSelectedLotId);
-          if (matched) setSelectedLot(matched);
-          else if (lots.length > 0) setSelectedLot(lots[0]);
+          if (matched) {
+            setSelectedLot(matched);
+          } else {
+            setSelectedLot({ _id: preSelectedLotId, crop: cropName || 'Crop', quantity });
+          }
         } else if (lots.length > 0) {
           setSelectedLot(lots[0]);
         }
@@ -133,7 +137,7 @@ const TransportFinder = () => {
   const handleProceedToBooking = () => {
     if (!selectedTransporter) return;
 
-    const lotId = selectedLot?._id || preSelectedLotId || '';
+    const lotId = preSelectedLotId || selectedLot?._id || '';
     const pickup = formatLocation(user?.location || selectedLot?.location) || 'Local Region Farm Yard';
 
     const searchParams = new URLSearchParams({
@@ -151,13 +155,16 @@ const TransportFinder = () => {
       quantity: numQuantity,
       pickupLocation: pickup,
       ...(lotId ? { cropLot: lotId } : {}),
+      ...(queryOfferId ? { offerId: queryOfferId } : {}),
       ...(queryMandiBookingId ? { mandiBookingId: queryMandiBookingId } : {}),
     });
 
     navigate(`/book-transport?${searchParams.toString()}`, {
       state: {
         selectedTransporter,
-        selectedLot,
+        selectedLot: selectedLot || (lotId ? { _id: lotId, crop: cropName } : null),
+        cropLotId: lotId,
+        offerId: queryOfferId,
         cropName: cropName || selectedLot?.crop || '',
         quantity: numQuantity,
         destination,

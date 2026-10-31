@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
   TrendingUp, 
   MapPin, 
@@ -9,10 +10,29 @@ import {
   ArrowRight, 
   Sprout,
   Store,
-  DollarSign
+  DollarSign,
+  LayoutDashboard
 } from 'lucide-react';
 
 const Home = () => {
+  const { user } = useAuth();
+
+  const getDashboardLink = (role) => {
+    switch (role) {
+      case 'FARMER':
+        return '/dashboard';
+      case 'BUYER':
+        return '/buyer-dashboard';
+      case 'TRANSPORTER':
+        return '/transporter-dashboard';
+      case 'MANDI_ADMIN':
+        return '/mandi-dashboard';
+      case 'ADMIN':
+        return '/admin';
+      default:
+        return '/dashboard';
+    }
+  };
   const steps = [
     {
       id: 1,
@@ -99,21 +119,66 @@ const Home = () => {
             </p>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-              <Link
-                to="/register"
-                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-transparent text-base font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg transition-all duration-200 group"
-              >
-                Get Started
-                <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </Link>
-              <Link
-                to="/login"
-                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-slate-300 text-base font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm hover:border-slate-400 transition-all duration-200"
-              >
-                Login
-              </Link>
-            </div>
+            {user ? (
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                <Link
+                  to={getDashboardLink(user.role)}
+                  className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-transparent text-base font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg transition-all duration-200 group"
+                >
+                  <LayoutDashboard className="mr-2 w-5 h-5" />
+                  Go to Dashboard
+                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                {user.role === 'FARMER' && (
+                  <Link
+                    to="/mandi-prices"
+                    className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-slate-300 text-base font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm hover:border-slate-400 transition-all duration-200"
+                  >
+                    View Mandi Prices
+                  </Link>
+                )}
+                {user.role === 'BUYER' && (
+                  <Link
+                    to="/find-crops"
+                    className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-slate-300 text-base font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm hover:border-slate-400 transition-all duration-200"
+                  >
+                    Find Crops
+                  </Link>
+                )}
+                {user.role === 'TRANSPORTER' && (
+                  <Link
+                    to="/my-vehicles"
+                    className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-slate-300 text-base font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm hover:border-slate-400 transition-all duration-200"
+                  >
+                    My Vehicles
+                  </Link>
+                )}
+                {user.role === 'MANDI_ADMIN' && (
+                  <Link
+                    to="/mandi-offers"
+                    className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-slate-300 text-base font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm hover:border-slate-400 transition-all duration-200"
+                  >
+                    Mandi Offers
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                <Link
+                  to="/register"
+                  className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-transparent text-base font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg transition-all duration-200 group"
+                >
+                  Get Started
+                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link
+                  to="/login"
+                  className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 border border-slate-300 text-base font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm hover:border-slate-400 transition-all duration-200"
+                >
+                  Login
+                </Link>
+              </div>
+            )}
 
             {/* Feature Pills */}
             <div className="pt-8 flex flex-wrap justify-center gap-6 text-slate-500 text-xs sm:text-sm">

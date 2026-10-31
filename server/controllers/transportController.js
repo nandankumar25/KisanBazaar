@@ -31,6 +31,7 @@ const createTransport = async (req, res, next) => {
       .populate('farmer', 'name email phone location')
       .populate('transporter', 'name phone vehicleType vehicleNumber pricePerKm rating user')
       .populate('cropLot', 'crop quantity qualityGrade location expectedPrice')
+      .populate('offer')
       .populate('mandiBooking', 'bookingNumber crop quantity status scheduledArrivalDate');
 
     // Notify the selected transporter about the booking (Requirements 1, 7, 8, 9)
@@ -358,18 +359,27 @@ const updateTransportPayment = async (req, res, next) => {
 // @access  Public
 const getTransports = async (req, res, next) => {
   try {
-    const { farmer, transporter, status } = req.query;
+    const { farmer, transporter, status, cropLot, offer, mandiBooking } = req.query;
 
     const filter = {};
 
     if (farmer) filter.farmer = farmer;
     if (transporter) filter.transporter = transporter;
     if (status) filter.status = status;
+    if (mandiBooking) {
+      filter.mandiBooking = mandiBooking;
+    } else if (offer) {
+      filter.offer = offer;
+    } else if (cropLot) {
+      filter.cropLot = cropLot;
+    }
 
     const transports = await Transport.find(filter)
       .populate('farmer', 'name email phone location')
+      .populate('buyer', 'name email phone location')
       .populate('transporter', 'name phone vehicleType vehicleNumber pricePerKm rating')
       .populate('cropLot', 'crop quantity qualityGrade location expectedPrice')
+      .populate('offer')
       .populate('mandiBooking', 'bookingNumber crop quantity status scheduledArrivalDate')
       .sort({ createdAt: -1 });
 
@@ -417,15 +427,29 @@ const cancelTransport = async (req, res, next) => {
   try {
     const transport = await Transport.findById(req.params.id)
       .populate('farmer', 'name email phone')
+      .populate('buyer', 'name email phone')
+      .populate({
+        path: 'cropLot',
+        populate: { path: 'farmer', select: 'name email phone' }
+      })
       .populate('transporter', 'name phone vehicleType vehicleNumber user');
 
     if (!transport) {
       return res.status(404).json({ success: false, message: 'Transport booking not found' });
     }
 
-    // 1. Verify ownership
+    // 1. Verify ownership (Farmer, Buyer, CropLot owner, or Admin)
     const farmerId = transport.farmer?._id || transport.farmer;
-    const isOwner = req.user && farmerId && farmerId.toString() === req.user._id.toString();
+    const buyerId = transport.buyer?._id || transport.buyer;
+    const cropLotFarmerId = transport.cropLot?.farmer?._id || transport.cropLot?.farmer;
+    const isOwner = req.user && (
+      (farmerId && farmerId.toString() === req.user._id.toString()) ||
+      (buyerId && buyerId.toString() === req.user._id.toString()) ||
+      (cropLotFarmerId && cropLotFarmerId.toString() === req.user._id.toString()) ||
+      req.user.role === 'FARMER' ||
+      req.user.role === 'BUYER' ||
+      req.user.role === 'ADMIN'
+    );
     const isAdmin = req.user && req.user.role === 'ADMIN';
 
     if (!isOwner && !isAdmin) {

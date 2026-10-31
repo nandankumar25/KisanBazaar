@@ -4,7 +4,6 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const CropLot = require('../models/CropLot');
 const Offer = require('../models/Offer');
-const { createNotification } = require('../utils/notificationHelper');
 
 // Helper to determine farmer vs buyer
 const resolveRoles = async (userA, userB, cropLotId) => {
@@ -153,22 +152,6 @@ const sendMessage = async (req, res, next) => {
       createdAt: new Date(),
     };
     await conversation.save();
-
-    // Trigger Notification for the recipient
-    const cropLotDoc = conversation.cropLot ? await CropLot.findById(conversation.cropLot).select('crop') : null;
-    const cropContext = cropLotDoc ? ` regarding ${cropLotDoc.crop}` : '';
-
-    await createNotification({
-      recipient: recipient._id,
-      sender: req.user._id,
-      type: 'MESSAGE',
-      title: `New message from ${req.user.name}`,
-      message: `${text.trim().substring(0, 90)}${text.trim().length > 90 ? '...' : ''}${cropContext}`,
-      link: `/messages?conversation=${conversation._id}`,
-      relatedConversation: conversation._id,
-      relatedCropLot: conversation.cropLot,
-      relatedOffer: conversation.offer,
-    });
 
     const populatedMessage = await Message.findById(message._id)
       .populate('sender', 'name role avatar')
